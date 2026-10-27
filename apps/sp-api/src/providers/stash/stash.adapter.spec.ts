@@ -57,7 +57,11 @@ describe('StashAdapter', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
-        data: { findScenes: { scenes: [{ id: '42', files: [] }] } },
+        data: {
+          findScenes: {
+            scenes: [{ id: '42', files: [{ height: 1080, width: 1920 }] }],
+          },
+        },
       }),
     } as Response);
     const copies = await adapter.findScenesByStashId('scene-1', {
@@ -72,6 +76,38 @@ describe('StashAdapter', () => {
         headers: expect.objectContaining({ ApiKey: 'preserved-key' }),
       }),
     );
+  });
+
+  it('does not treat a catalog-linked metadata record without a file as an available copy', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          findScenes: {
+            count: 1,
+            scenes: [
+              {
+                id: '42',
+                files: [],
+                stash_ids: [
+                  {
+                    endpoint: 'https://stashdb.org/graphql',
+                    stash_id: 'scene-1',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    } as Response);
+    expect(
+      await adapter.findScenesByStashId(
+        'scene-1',
+        { baseUrl: 'http://stash.local' },
+        { providerKey: 'STASHDB' },
+      ),
+    ).toEqual([]);
   });
 
   it('returns empty list when there are no matching scenes', async () => {

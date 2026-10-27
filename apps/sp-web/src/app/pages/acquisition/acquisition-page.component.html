@@ -7,15 +7,12 @@
       </p>
     </div>
     <button
-      pButton
-      severity="secondary"
-      size="small"
       type="button"
-      class="secondary-action"
+      class="app-baseline-button secondary-action"
       [disabled]="refreshing() || inFlight()"
       (click)="refreshStatus()"
     >
-      {{ refreshing() ? 'Refreshing status…' : 'Refresh status' }}
+      {{ refreshing() ? 'Refreshing statusÃ¢â‚¬Â¦' : 'Refresh status' }}
     </button>
   </header>
 
@@ -36,29 +33,13 @@
       </div>
 
       <div class="page-alert-actions app-action-row">
-        <a
-          pButton
-          severity="secondary"
-          size="small"
-          class="primary-link small"
-          [routerLink]="['/settings/integrations']"
-        >
+        <a class="app-baseline-button primary-link small" [routerLink]="['/settings/integrations']">
           Repair integrations
         </a>
-        <a
-          pButton
-          severity="secondary"
-          size="small"
-          class="secondary-link small"
-          [routerLink]="['/settings/indexing']"
+        <a class="app-baseline-button secondary-link small" [routerLink]="['/settings/indexing']"
           >Open Indexing</a
         >
-        <a
-          pButton
-          severity="secondary"
-          size="small"
-          class="secondary-link small"
-          [routerLink]="['/scenes']"
+        <a class="app-baseline-button secondary-link small" [routerLink]="['/scenes']"
           >Open Scenes</a
         >
       </div>
@@ -78,11 +59,8 @@
     <section class="state-shell app-state-block">
       <p-message severity="error" styleClass="app-page-message">{{ error() }}</p-message>
       <button
-        pButton
-        severity="secondary"
-        size="small"
         type="button"
-        class="secondary-action"
+        class="app-baseline-button secondary-action"
         (click)="retryInitialLoad()"
       >
         Retry
@@ -121,48 +99,20 @@
         <div class="state-actions app-action-row">
           @if (selectedLifecycle() !== 'ANY') {
             <button
-              pButton
-              severity="secondary"
-              size="small"
               type="button"
-              class="secondary-action"
+              class="app-baseline-button secondary-action"
               (click)="selectLifecycle('ANY')"
             >
               Show all tracked
             </button>
           }
-          <a
-            pButton
-            severity="secondary"
-            size="small"
-            class="primary-link"
-            [routerLink]="['/scenes']"
-            >Open Scenes</a
-          >
-          <a
-            pButton
-            severity="secondary"
-            size="small"
-            class="secondary-link"
-            [routerLink]="['/settings/indexing']"
+          <a class="app-baseline-button primary-link" [routerLink]="['/scenes']">Open Scenes</a>
+          <a class="app-baseline-button secondary-link" [routerLink]="['/settings/indexing']"
             >Open Indexing</a
           >
-          <a
-            pButton
-            severity="secondary"
-            size="small"
-            class="secondary-link"
-            [routerLink]="['/library']"
-            >Open Library</a
-          >
+          <a class="app-baseline-button secondary-link" [routerLink]="['/library']">Open Library</a>
           @if (pageAlert()) {
-            <a
-              pButton
-              severity="secondary"
-              size="small"
-              class="secondary-link"
-              [routerLink]="['/settings/integrations']"
-            >
+            <a class="app-baseline-button secondary-link" [routerLink]="['/settings/integrations']">
               Repair integrations
             </a>
           }
@@ -182,11 +132,8 @@
 
           @if (selectedLifecycle() !== 'ANY') {
             <button
-              pButton
-              severity="secondary"
-              size="small"
               type="button"
-              class="secondary-action"
+              class="app-baseline-button secondary-action"
               (click)="selectLifecycle('ANY')"
             >
               Show all tracked
@@ -194,6 +141,14 @@
           }
         </div>
 
+        @if (selectionError(); as message) {
+          <p role="alert">{{ message }}</p>
+        }
+        @if (selectedIds().length) {
+          <button class="app-baseline-button" type="button" (click)="clearSelection()">
+            Clear selection
+          </button>
+        }
         <app-request-batch-actions [scenes]="selectedScenes()" (finished)="actionsFinished()" />
         @for (section of visibleSections(); track section.lifecycle) {
           <section
@@ -213,13 +168,24 @@
                 <p>{{ section.description }}</p>
               </div>
 
+              @if (section.lifecycle === 'IMPORT_PENDING' || section.lifecycle === 'REQUESTED') {
+                <button
+                  class="app-baseline-button"
+                  type="button"
+                  [disabled]="!!selectingLifecycle()"
+                  (click)="selectAll(section.lifecycle)"
+                >
+                  {{
+                    selectingLifecycle() === section.lifecycle
+                      ? 'Selecting…'
+                      : 'Select all in ' + section.label
+                  }}
+                </button>
+              }
               @if (selectedLifecycle() === 'ANY' && section.totalCount > section.items.length) {
                 <button
-                  pButton
-                  severity="secondary"
-                  size="small"
                   type="button"
-                  class="secondary-action compact"
+                  class="app-baseline-button secondary-action compact"
                   (click)="selectLifecycle(section.lifecycle)"
                 >
                   View all {{ section.label.toLowerCase() }}
@@ -254,7 +220,7 @@
                         type="checkbox"
                         [attr.aria-label]="'Select ' + item.title"
                         [checked]="selectedIds().includes(item.id)"
-                        [disabled]="selectedIds().length >= 20 && !selectedIds().includes(item.id)"
+                        [disabled]="!!selectingLifecycle()"
                         (change)="toggleSelection(item.id)"
                       />
                       @if (item.reconciliation; as reconciliation) {
@@ -312,7 +278,10 @@
                         item.reconciliation?.condition === 'WAITING_FOR_STASH_MATCH' ||
                         item.status.state === 'IMPORT_PENDING'
                       ) {
-                        <app-import-match-review [sceneId]="item.id" />
+                        <app-import-match-review
+                          [sceneId]="item.id"
+                          (reconciled)="actionsFinished()"
+                        />
                       }
                       <app-request-actions
                         [sceneId]="item.id"
@@ -321,10 +290,7 @@
                         (changed)="actionsFinished()"
                       />
                       <a
-                        pButton
-                        severity="secondary"
-                        size="small"
-                        class="primary-link small"
+                        class="app-baseline-button primary-link small"
                         [routerLink]="['/scene', item.id]"
                         [queryParams]="{ returnTo: currentRouteUrl() }"
                       >
@@ -333,10 +299,7 @@
 
                       @if (item.whisparrViewUrl) {
                         <a
-                          pButton
-                          severity="secondary"
-                          size="small"
-                          class="secondary-link small"
+                          class="app-baseline-button secondary-link small"
                           [href]="item.whisparrViewUrl"
                           target="_blank"
                           rel="noopener noreferrer"
@@ -367,11 +330,8 @@
             loadMoreError()
           }}</p-message>
           <button
-            pButton
-            severity="secondary"
-            size="small"
             type="button"
-            class="secondary-action compact"
+            class="app-baseline-button secondary-action compact"
             (click)="retryLoadMore()"
           >
             Retry

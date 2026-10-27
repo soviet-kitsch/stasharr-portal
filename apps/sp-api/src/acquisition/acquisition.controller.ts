@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ImportMatchReviewService } from './import-match-review.service';
 import { AcquisitionScenesFeedDto } from './dto/acquisition-scene-feed.dto';
 import { AcquisitionScenesQueryDto } from './dto/acquisition-scenes-query.dto';
@@ -14,6 +14,11 @@ export class AcquisitionController {
   @Get('scenes/:sceneId/match-review')
   reviewMatch(@Param('sceneId') sceneId: string) {
     return this.matchReview.review(sceneId);
+  }
+
+  @Post('scenes/:sceneId/reconcile')
+  reconcileScene(@Param('sceneId') sceneId: string) {
+    return this.matchReview.reconcile(sceneId);
   }
 
   @Get('scenes')

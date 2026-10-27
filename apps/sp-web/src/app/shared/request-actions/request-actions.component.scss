@@ -9,8 +9,7 @@
   flex-wrap: wrap;
   gap: 0.45rem;
 }
-// Reuse native themed buttons; keep only layout in the request components.
-:host .p-button {
+:host .app-baseline-button {
   max-width: 100%;
   white-space: normal;
   justify-content: center;

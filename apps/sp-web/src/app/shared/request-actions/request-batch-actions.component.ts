@@ -1,7 +1,7 @@
+import { newOperationKey } from '../../core/api/operation-key';
 import { Component, EventEmitter, Input, Output, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { finalize } from 'rxjs';
-import { ButtonDirective } from 'primeng/button';
+import { concatMap, finalize, from, map, reduce } from 'rxjs';
 import { requestOutcomeMessage } from './request-outcome';
 import { Dialog } from 'primeng/dialog';
 import { SubmitSceneRequestPayload } from '../../core/api/discover.types';
@@ -20,40 +20,31 @@ interface Row {
 
 @Component({
   selector: 'app-request-batch-actions',
-  imports: [ButtonDirective, Dialog, SceneRequestModalComponent],
+  imports: [Dialog, SceneRequestModalComponent],
   styleUrl: './request-actions.component.scss',
   template: `
     @if (scenes.length) {
       <div class="app-action-row batch-actions" role="region" aria-label="Selected requests">
-        <span>{{ scenes.length }} selected (maximum 20)</span>
+        <span>{{ scenes.length }} selected (reviewed together; processed in batches of 20)</span>
         <button
-          pButton
-          size="small"
-          severity="secondary"
           type="button"
-          class="secondary-action"
+          class="app-baseline-button secondary-action"
           [disabled]="busy()"
           (click)="preview('RE_REQUEST')"
         >
           Re-request selected
         </button>
         <button
-          pButton
-          size="small"
-          severity="secondary"
           type="button"
-          class="secondary-action"
+          class="app-baseline-button secondary-action"
           [disabled]="busy()"
           (click)="preview('SEARCH')"
         >
           Search selected
         </button>
         <button
-          pButton
-          size="small"
-          severity="secondary"
           type="button"
-          class="secondary-action"
+          class="app-baseline-button secondary-action"
           [disabled]="busy()"
           (click)="preview('DISMISS')"
         >
@@ -99,8 +90,7 @@ interface Row {
       @if (!completed()) {
         @if (kind() === 'RE_REQUEST' && requiresSettings()) {
           <button
-            pButton
-            severity="secondary"
+            class="app-baseline-button"
             type="button"
             [disabled]="busy()"
             (click)="settingsOpen.set(true)"
@@ -109,8 +99,7 @@ interface Row {
           </button>
         }
         <button
-          pButton
-          [severity]="kind() === 'DISMISS' ? 'danger' : 'primary'"
+          class="app-baseline-button"
           type="button"
           [disabled]="
             busy() ||
@@ -123,7 +112,7 @@ interface Row {
           {{ kind() === 'DISMISS' ? 'deletions from Portal' : 'actions' }}
         </button>
       }
-      <button pButton severity="secondary" type="button" [disabled]="busy()" (click)="close(false)">
+      <button class="app-baseline-button" type="button" [disabled]="busy()" (click)="close(false)">
         {{ completed() ? 'Done' : 'Cancel' }}
       </button>
     </p-dialog>
@@ -157,6 +146,7 @@ export class RequestBatchActionsComponent {
     () => this.rows().find((row) => row.eligible && row.requiresSettings !== false)?.id ?? null,
   );
   private key = '';
+  private executionStarted = false;
   private reviewedScenes: Array<{ id: string; title: string }> = [];
   protected title(id: string) {
     return this.reviewedScenes.find((scene) => scene.id === id)?.title ?? id;
@@ -184,28 +174,27 @@ export class RequestBatchActionsComponent {
   }
 
   protected preview(kind: Kind): void {
-    if (this.busy() || !this.scenes.length || this.scenes.length > 20) return;
+    if (this.busy() || !this.scenes.length) return;
     this.reviewedScenes = this.scenes.map((scene) => ({ ...scene }));
-    this.key = crypto.randomUUID();
+    this.key = newOperationKey();
     this.kind.set(kind);
     this.open.set(true);
     this.busy.set(true);
     this.completed.set(false);
+    this.executionStarted = false;
     this.error.set(null);
     this.rows.set([]);
     this.settings.set(null);
     this.eligibleIds.set([]);
-    this.http
-      .post<{ results: Row[] }>('/api/requests/batch/preview', {
-        kind,
-        ids: this.reviewedScenes.map((scene) => scene.id),
-        operationKey: this.key,
-      })
+    this.runBatches(
+      '/api/requests/batch/preview',
+      this.reviewedScenes.map((scene) => scene.id),
+    )
       .pipe(finalize(() => this.busy.set(false)))
       .subscribe({
         next: (value) => {
-          this.rows.set(value.results);
-          this.eligibleIds.set(value.results.filter((row) => row.eligible).map((row) => row.id));
+          this.rows.set(value);
+          this.eligibleIds.set(value.filter((row) => row.eligible).map((row) => row.id));
         },
         error: () => this.error.set('Could not verify this selection. No actions were taken.'),
       });
@@ -220,17 +209,12 @@ export class RequestBatchActionsComponent {
       return;
     this.busy.set(true);
     this.error.set(null);
-    this.http
-      .post<{ results: Row[] }>('/api/requests/batch/execute', {
-        kind: this.kind(),
-        ids: [...this.eligibleIds()],
-        operationKey: this.key,
-        ...(this.settings() ? { settings: this.settings() } : {}),
-      })
+    this.executionStarted = true;
+    this.runBatches('/api/requests/batch/execute', [...this.eligibleIds()], this.settings())
       .pipe(finalize(() => this.busy.set(false)))
       .subscribe({
         next: (value) => {
-          this.rows.set(value.results);
+          this.rows.set(value);
           this.completed.set(true);
         },
         error: () =>
@@ -240,9 +224,39 @@ export class RequestBatchActionsComponent {
       });
   }
 
+  private runBatches(endpoint: string, ids: string[], settings?: SubmitSceneRequestPayload | null) {
+    const groups = Array.from({ length: Math.ceil(ids.length / 20) }, (_, index) =>
+      ids.slice(index * 20, index * 20 + 20),
+    );
+    return from(groups).pipe(
+      concatMap((ids) =>
+        this.http
+          .post<{ results: Row[] }>(endpoint, {
+            kind: this.kind(),
+            ids,
+            operationKey: this.key,
+            ...(settings ? { settings } : {}),
+          })
+          .pipe(
+            map((value) => {
+              if (
+                !Array.isArray(value.results) ||
+                value.results.length !== ids.length ||
+                new Set(value.results.map((row) => row.id)).size !== ids.length ||
+                value.results.some((row) => !ids.includes(row.id))
+              )
+                throw new Error('Incomplete batch results');
+              return value.results;
+            }),
+          ),
+      ),
+      reduce((all, rows) => [...all, ...rows], [] as Row[]),
+    );
+  }
+
   protected close(visible: boolean): void {
     if (visible || this.busy()) return;
-    const changed = this.completed();
+    const changed = this.executionStarted;
     this.open.set(false);
     if (changed) this.finished.emit();
   }

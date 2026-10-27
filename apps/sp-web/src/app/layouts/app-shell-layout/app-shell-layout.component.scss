@@ -1,3 +1,5 @@
+@use '../../../styles/baseline-button';
+
 :host {
   display: block;
   min-height: 100dvh;
@@ -95,23 +97,8 @@
 
 .logout-btn,
 .mobile-logout-btn {
+  @include baseline-button.appearance;
   width: 100%;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 0.7rem 0.8rem;
-  background: var(--surface-elevated);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-family: var(--app-font-family);
-  font-size: 0.98rem;
-  font-weight: 700;
-  text-align: left;
-}
-
-.logout-btn:disabled,
-.mobile-logout-btn:disabled {
-  cursor: progress;
-  opacity: 0.7;
 }
 
 .nav-item,
@@ -233,7 +220,11 @@
   padding: 0.8rem 0.95rem;
   background:
     radial-gradient(circle at top right, rgba(215, 153, 33, 0.16), transparent 40%),
-    linear-gradient(145deg, color-mix(in srgb, var(--warning-color, #b7791f) 9%, var(--surface-1)), var(--surface-1));
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--warning-color, #b7791f) 9%, var(--surface-1)),
+      var(--surface-1)
+    );
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -298,12 +289,11 @@
   padding: 1rem;
   border-radius: 22px;
   border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-elevated) 96%, transparent),
-      color-mix(in srgb, var(--surface-1) 96%, transparent)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-elevated) 96%, transparent),
+    color-mix(in srgb, var(--surface-1) 96%, transparent)
+  );
   box-shadow: 0 20px 44px rgba(15, 23, 42, 0.28);
   z-index: 40;
 }
@@ -354,12 +344,11 @@
   gap: 0.28rem;
   padding: 0.35rem 0.45rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-1) 82%, transparent),
-      color-mix(in srgb, var(--surface-elevated) 94%, transparent)
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-1) 82%, transparent),
+    color-mix(in srgb, var(--surface-elevated) 94%, transparent)
+  );
   backdrop-filter: blur(18px);
   box-shadow: 0 -18px 40px rgba(15, 23, 42, 0.18);
   z-index: 38;

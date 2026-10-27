@@ -1,3 +1,5 @@
+@use './styles/baseline-button';
+
 @import 'primeicons/primeicons.css';
 
 :root {
@@ -918,7 +920,7 @@ body {
   overflow-wrap: anywhere;
 }
 
-.app-review-dialog .p-button {
+.app-review-dialog .app-baseline-button {
   width: fit-content;
   max-width: 100%;
   white-space: normal;
@@ -1004,4 +1006,22 @@ body {
 
 :root[data-images='obscured'] img {
   transform: scale(1.02);
+}
+
+.app-baseline-button {
+  @include baseline-button.appearance;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }

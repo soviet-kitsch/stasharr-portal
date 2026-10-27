@@ -1,3 +1,4 @@
+import { newOperationKey } from '../../core/api/operation-key';
 import {
   Component,
   EventEmitter,
@@ -12,7 +13,6 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { Subscription } from 'rxjs';
-import { ButtonDirective } from 'primeng/button';
 import { Dialog } from 'primeng/dialog';
 import { Message } from 'primeng/message';
 import { MultiSelect } from 'primeng/multiselect';
@@ -44,7 +44,6 @@ type NumberSelectOption = {
   imports: [
     ReactiveFormsModule,
     Dialog,
-    ButtonDirective,
     Message,
     ProgressSpinner,
     Select,
@@ -245,7 +244,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
     const body = JSON.stringify({ currentSceneId, settings: payload, rerequest: this.rerequest });
     if (body !== this.submissionBody) {
       this.submissionBody = body;
-      this.submissionKey = crypto.randomUUID();
+      this.submissionKey = newOperationKey();
     }
     this.requestSubmitLoading.set(true);
     this.requestSubmitError.set(null);
@@ -285,10 +284,17 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
         error: (error) => {
           if (error.error?.actionState === 'FAILED' || (error.status && error.status !== 409))
             this.submissionBody = '';
+          const messages = error.error?.message;
+          const detail =
+            typeof messages === 'string'
+              ? messages
+              : Array.isArray(messages)
+                ? messages
+                    .filter((message): message is string => typeof message === 'string')
+                    .join(' ')
+                : '';
           this.requestSubmitError.set(
-            typeof error.error?.message === 'string'
-              ? error.error.message
-              : 'The result could not be confirmed. Check request history before retrying.',
+            detail || 'The result could not be confirmed. Check request history before retrying.',
           );
         },
       });

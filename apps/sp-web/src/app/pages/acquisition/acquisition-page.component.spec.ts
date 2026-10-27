@@ -526,4 +526,51 @@ describe('AcquisitionPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No failed scenes right now');
     expect(fixture.nativeElement.textContent).toContain('Show all tracked');
   });
+  it.each(['REQUESTED', 'IMPORT_PENDING'] as const)(
+    'selects the whole %s section across pages without selecting other lifecycles',
+    async (lifecycle) => {
+      const { fixture, acquisitionService } = await renderPage();
+      const component = fixture.componentInstance as any;
+      const rows = Array.from({ length: 120 }, (_, i) =>
+        buildItem({ id: `row-${i}`, status: { state: lifecycle } }),
+      );
+      acquisitionService.getScenesFeed.mockImplementation(
+        (page: number, perPage: number, filter: string) =>
+          of(
+            buildResponse(rows.slice((page - 1) * 100, page * 100), {
+              total: 120,
+              page,
+              hasMore: page === 1,
+            }),
+          ),
+      );
+      await component.selectAll(lifecycle);
+      expect(acquisitionService.getScenesFeed).toHaveBeenNthCalledWith(2, 1, 100, lifecycle);
+      expect(acquisitionService.getScenesFeed).toHaveBeenLastCalledWith(2, 100, lifecycle);
+      expect(component.selectedIds()).toHaveLength(120);
+      expect(component.selectedScenes()).toHaveLength(120);
+      expect(component.selectedIds()).not.toContain('scene-downloading');
+      component.clearSelection();
+      expect(component.selectedScenes()).toEqual([]);
+    },
+  );
+  it('keeps the previous selection when a select-all page fails and ignores obsolete results', async () => {
+    const { fixture, acquisitionService } = await renderPage();
+    const component = fixture.componentInstance as any;
+    component.toggleSelection('scene-requested');
+    const response = new Subject<AcquisitionScenesResponse>();
+    acquisitionService.getScenesFeed.mockReturnValue(response);
+    const pending = component.selectAll('REQUESTED');
+    response.error(new Error('offline'));
+    await pending;
+    expect(component.selectedIds()).toEqual(['scene-requested']);
+    expect(component.selectionError()).toContain('previous selection');
+    const next = new Subject<AcquisitionScenesResponse>();
+    acquisitionService.getScenesFeed.mockReturnValue(next);
+    const obsolete = component.selectAll('REQUESTED');
+    component.clearSelection();
+    next.next(buildResponse([buildItem({ id: 'late', status: { state: 'REQUESTED' } })]));
+    await obsolete;
+    expect(component.selectedIds()).toEqual([]);
+  });
 });

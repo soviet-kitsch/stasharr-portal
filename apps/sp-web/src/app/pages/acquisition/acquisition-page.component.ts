@@ -17,10 +17,9 @@ import {
 import { DatePipe } from '@angular/common';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
 import { ImportMatchReviewComponent } from '../../shared/import-match-review/import-match-review.component';
-import { ButtonDirective } from 'primeng/button';
 import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { finalize, Subscription } from 'rxjs';
+import { finalize, firstValueFrom, Subscription } from 'rxjs';
 import { Message } from 'primeng/message';
 import { ProgressSpinner } from 'primeng/progressspinner';
 import { AcquisitionService } from '../../core/api/acquisition.service';
@@ -78,7 +77,6 @@ type AcquisitionPageFeedState = FeedState<AcquisitionSceneItem> & {
     DatePipe,
     RequestActionsComponent,
     ImportMatchReviewComponent,
-    ButtonDirective,
     RequestBatchActionsComponent,
   ],
   templateUrl: './acquisition-page.component.html',
@@ -170,12 +168,65 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   protected readonly inFlight = signal(false);
   protected readonly items = signal<AcquisitionSceneItem[]>([]);
   protected readonly selectedIds = signal<string[]>([]);
-  protected readonly selectedScenes = computed(() =>
-    this.items().filter((item) => this.selectedIds().includes(item.id)),
-  );
+  private readonly selectionRecords = signal<AcquisitionSceneItem[]>([]);
+  protected readonly selectedScenes = computed(() => {
+    const records = new Map(
+      [...this.selectionRecords(), ...this.items()].map((item) => [item.id, item]),
+    );
+    return this.selectedIds()
+      .map((id) => records.get(id))
+      .filter((item): item is AcquisitionSceneItem => !!item);
+  });
+  protected readonly selectingLifecycle = signal<AcquisitionLifecycleState | null>(null);
+  protected readonly selectionError = signal<string | null>(null);
+  private selectionVersion = 0;
+  protected async selectAll(lifecycle: AcquisitionLifecycleState): Promise<void> {
+    if (this.selectingLifecycle()) return;
+    const version = ++this.selectionVersion;
+    this.selectingLifecycle.set(lifecycle);
+    this.selectionError.set(null);
+    const records = new Map<string, AcquisitionSceneItem>();
+    try {
+      for (let page = 1; ; page++) {
+        const response = await firstValueFrom(
+          this.acquisitionService.getScenesFeed(page, 100, lifecycle),
+        );
+        if (version !== this.selectionVersion) return;
+        if (response.page !== page || (response.hasMore && !response.items.length))
+          throw new Error('Incomplete selection');
+        for (const item of response.items) {
+          if (item.status.state !== lifecycle || records.has(item.id))
+            throw new Error('The queue changed while selecting');
+          records.set(item.id, item);
+        }
+        if (!response.hasMore) {
+          if (records.size !== response.total) throw new Error('The queue changed while selecting');
+          break;
+        }
+      }
+      this.selectionRecords.update((current) => [
+        ...new Map([...current, ...records.values()].map((item) => [item.id, item])).values(),
+      ]);
+      this.selectedIds.update((ids) => [...new Set([...ids, ...records.keys()])]);
+    } catch {
+      if (version === this.selectionVersion)
+        this.selectionError.set(
+          'Could not select the complete section. Your previous selection is unchanged; refresh and try again.',
+        );
+    } finally {
+      if (version === this.selectionVersion) this.selectingLifecycle.set(null);
+    }
+  }
+  protected clearSelection(): void {
+    this.selectionVersion++;
+    this.selectingLifecycle.set(null);
+    this.selectedIds.set([]);
+    this.selectionRecords.set([]);
+    this.selectionError.set(null);
+  }
   protected toggleSelection(id: string): void {
     this.selectedIds.update((ids) =>
-      ids.includes(id) ? ids.filter((value) => value !== id) : ids.length < 20 ? [...ids, id] : ids,
+      ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
     );
   }
   protected actionsFinished(): void {
@@ -271,6 +322,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   ngOnDestroy(): void {
+    this.clearSelection();
     this.refreshSubscription?.unsubscribe();
     if (this.observer && this.sentinelElement) {
       this.observer.unobserve(this.sentinelElement);
@@ -685,7 +737,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private resetFeedAndReload(): void {
-    this.selectedIds.set([]);
+    this.clearSelection();
     this.feedVersion += 1;
     this.pendingReload = false;
     this.page.set(0);

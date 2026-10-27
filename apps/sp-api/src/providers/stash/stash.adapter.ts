@@ -918,6 +918,9 @@ export class StashAdapter {
       return null;
     }
 
+    // An orphaned metadata record is not a playable library copy.
+    if (!Array.isArray(scene.files) || scene.files.length === 0) return null;
+
     if (providerKey) {
       const linkedEntries = Array.isArray(scene.stash_ids)
         ? scene.stash_ids

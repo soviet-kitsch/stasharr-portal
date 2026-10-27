@@ -338,4 +338,67 @@ describe('request action controls', () => {
     await fixture.whenStable();
     expect(renderedText(fixture)).toContain('Queue blocked: destination needs attention.');
   });
+  it('reviews and executes more than twenty selected requests in bounded sequential batches', async () => {
+    const fixture = TestBed.createComponent(RequestBatchActionsComponent);
+    const scenes = Array.from({ length: 45 }, (_, i) => ({ id: `row-${i}`, title: `Row ${i}` }));
+    fixture.componentRef.setInput('scenes', scenes);
+    fixture.detectChanges();
+    button(fixture, 'Search selected').click();
+    let key = '';
+    for (const offset of [0, 20, 40]) {
+      const request = http.expectOne('/api/requests/batch/preview');
+      const ids = scenes.slice(offset, offset + 20).map((row) => row.id);
+      expect(request.request.body.ids).toEqual(ids);
+      key ||= request.request.body.operationKey;
+      expect(request.request.body.operationKey).toBe(key);
+      request.flush({
+        results: ids.map((id) => ({ id, eligible: true, requiresSettings: false })),
+      });
+    }
+    http.expectNone('/api/requests/batch/execute');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    button(fixture, 'Confirm 45 actions').click();
+    for (const offset of [0, 20, 40]) {
+      const request = http.expectOne('/api/requests/batch/execute');
+      const ids = scenes.slice(offset, offset + 20).map((row) => row.id);
+      expect(request.request.body.ids).toEqual(ids);
+      expect(request.request.body.operationKey).toBe(key);
+      request.flush({
+        results: ids.map((id) => ({ id, ok: true, result: { outcome: 'SEARCH_STARTED' } })),
+      });
+    }
+    fixture.detectChanges();
+    expect((fixture.componentInstance as any).rows()).toHaveLength(45);
+    expect((fixture.componentInstance as any).completed()).toBe(true);
+  });
+  it('stops at an unconfirmed batch and retains the same operation key when recovering outcomes', () => {
+    const fixture = TestBed.createComponent(RequestBatchActionsComponent);
+    const component = fixture.componentInstance as any;
+    component.scenes = Array.from({ length: 21 }, (_, i) => ({ id: `row-${i}`, title: 'Row' }));
+    component.preview('SEARCH');
+    for (const offset of [0, 20]) {
+      const request = http.expectOne('/api/requests/batch/preview');
+      request.flush({
+        results: component.scenes
+          .slice(offset, offset + 20)
+          .map((row: any) => ({ ...row, eligible: true })),
+      });
+    }
+    component.confirm();
+    const first = http.expectOne('/api/requests/batch/execute');
+    const key = first.request.body.operationKey;
+    first.flush({ results: first.request.body.ids.map((id: string) => ({ id, ok: true })) });
+    http.expectOne('/api/requests/batch/execute').flush({}, { status: 503, statusText: 'Offline' });
+    expect(component.completed()).toBe(false);
+    expect(component.error()).toContain('could not be confirmed');
+    component.confirm();
+    const retry = http.expectOne('/api/requests/batch/execute');
+    expect(retry.request.body.operationKey).toBe(key);
+    retry.flush({ results: retry.request.body.ids.map((id: string) => ({ id, ok: true })) });
+    const last = http.expectOne('/api/requests/batch/execute');
+    expect(last.request.body.operationKey).toBe(key);
+    last.flush({ results: last.request.body.ids.map((id: string) => ({ id, ok: true })) });
+    expect(component.completed()).toBe(true);
+  });
 });

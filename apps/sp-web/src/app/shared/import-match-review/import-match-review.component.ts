@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import {
   Component,
   Input,
+  Output,
+  EventEmitter,
   OnDestroy,
   OnChanges,
   SimpleChanges,
@@ -11,7 +13,6 @@ import {
 } from '@angular/core';
 import { Subscription, finalize } from 'rxjs';
 import { Dialog } from 'primeng/dialog';
-import { ButtonDirective } from 'primeng/button';
 
 export interface ImportMatchReview {
   sceneId: string;
@@ -37,23 +38,25 @@ export interface ImportMatchReview {
     catalogIds: string[];
     files: { path: string; size: number | null }[];
   }[];
+  portalStatus?: string;
+  reconciliationMessage?: string;
   nextSteps: string[];
   limitations: string[];
 }
 
 @Component({
   selector: 'app-import-match-review',
-  imports: [DatePipe, Dialog, ButtonDirective],
+  imports: [DatePipe, Dialog],
   styleUrl: './import-match-review.component.scss',
   template: `
-    <button pButton type="button" severity="secondary" size="small" (click)="show()">
-      Review Stash match
-    </button>
+    <button class="app-baseline-button" type="button" (click)="show()">Review Stash match</button>
     <p-dialog
       header="Review imported file and Stash match"
       [visible]="open()"
       (visibleChange)="setOpen($event)"
       [modal]="true"
+      [closable]="!reconciling()"
+      [closeOnEscape]="!reconciling()"
       [blockScroll]="true"
       [appendTo]="'body'"
       [style]="{ width: '48rem', maxWidth: '95vw' }"
@@ -109,9 +112,7 @@ export interface ImportMatchReview {
           <div class="app-action-row">
             @if (review.whisparr.viewUrl) {
               <a
-                pButton
-                severity="secondary"
-                size="small"
+                class="app-baseline-button"
                 [href]="review.whisparr.viewUrl"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -120,13 +121,11 @@ export interface ImportMatchReview {
             }
             @if (review.stash.viewUrl) {
               <a
-                pButton
-                severity="secondary"
-                size="small"
+                class="app-baseline-button"
                 [href]="review.stash.viewUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                >Open Stash library</a
+                >Open Stash scene</a
               >
             }
           </div>
@@ -150,9 +149,7 @@ export interface ImportMatchReview {
                 }
                 @if (candidate.viewUrl) {
                   <a
-                    pButton
-                    severity="secondary"
-                    size="small"
+                    class="app-baseline-button"
                     [href]="candidate.viewUrl"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -162,6 +159,21 @@ export interface ImportMatchReview {
               </article>
             }
           }
+          <h3>Recovery</h3>
+          <p>
+            If Whisparr has the correct file, it still needs to be scanned and linked to this
+            catalog scene in Stash before Portal can mark it available.
+          </p>
+          <details>
+            <summary>The file is matched to the wrong scene</summary>
+            <p>
+              Compare the actual video in Stash with the Whisparr entry and the requested catalog
+              scene first. If the Whisparr assignment is incorrect, correct it with manual import
+              while preserving the file. If only the Stash catalog link is wrong or missing, review
+              Identify on the specific Stash scene and save the intended association. Then refresh
+              this scene. Re-requesting cannot correct an existing file assignment.
+            </p>
+          </details>
           <h3>Next steps</h3>
           <ol>
             @for (step of review.nextSteps; track step) {
@@ -179,19 +191,37 @@ export interface ImportMatchReview {
         }
         <p class="review-note">
           Checking this panel does not start a download, scan, identification job or metadata
-          change. After completing those steps in Stash, refresh Portal status.
+          change. Refresh this scene only updates Portal’s observations of the existing file and
+          catalog links.
         </p>
+        @if (review()?.reconciliationMessage; as message) {
+          <p role="status">{{ message }}</p>
+        }
         <div class="app-action-row">
           <button
-            pButton
+            class="app-baseline-button"
             type="button"
-            severity="secondary"
-            [disabled]="loading()"
+            [disabled]="loading() || reconciling()"
+            (click)="reconcile()"
+          >
+            {{ reconciling() ? 'Refreshing…' : 'Refresh this scene' }}
+          </button>
+          <button
+            class="app-baseline-button"
+            type="button"
+            [disabled]="loading() || reconciling()"
             (click)="load()"
           >
             Re-check match
           </button>
-          <button pButton type="button" severity="secondary" (click)="setOpen(false)">Close</button>
+          <button
+            class="app-baseline-button"
+            type="button"
+            [disabled]="reconciling()"
+            (click)="setOpen(false)"
+          >
+            Close
+          </button>
         </div>
       </div>
     </p-dialog>
@@ -199,6 +229,9 @@ export interface ImportMatchReview {
 })
 export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
   @Input({ required: true }) sceneId = '';
+  @Output() reconciled = new EventEmitter<void>();
+  protected readonly reconciling = signal(false);
+  private didReconcile = false;
   private readonly http = inject(HttpClient);
   private request: Subscription | null = null;
   protected readonly open = signal(false);
@@ -210,10 +243,15 @@ export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
     this.load();
   }
   protected setOpen(value: boolean): void {
+    if (this.reconciling()) return;
     this.open.set(value);
     if (!value) {
       this.request?.unsubscribe();
       this.loading.set(false);
+      if (this.didReconcile) {
+        this.didReconcile = false;
+        this.reconciled.emit();
+      }
     }
   }
   protected sourceLabel(state: string): string {
@@ -224,7 +262,7 @@ export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
         : 'Unavailable or incomplete';
   }
   protected load(): void {
-    if (!this.sceneId) return;
+    if (!this.sceneId || this.reconciling()) return;
     this.request?.unsubscribe();
     this.loading.set(true);
     this.error.set(null);
@@ -242,8 +280,30 @@ export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
           ),
       });
   }
+  protected reconcile(): void {
+    if (!this.sceneId || this.loading() || this.reconciling()) return;
+    this.reconciling.set(true);
+    this.error.set(null);
+    this.request = this.http
+      .post<ImportMatchReview>(
+        `/api/acquisition/scenes/${encodeURIComponent(this.sceneId)}/reconcile`,
+        {},
+      )
+      .pipe(finalize(() => this.reconciling.set(false)))
+      .subscribe({
+        next: (data) => {
+          this.review.set(data);
+          this.didReconcile = true;
+        },
+        error: () =>
+          this.error.set(
+            'The refresh could not be confirmed. Re-check the match and integration status before trying again.',
+          ),
+      });
+  }
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['sceneId']) {
+      this.didReconcile = false;
       this.request?.unsubscribe();
       this.open.set(false);
       this.review.set(null);

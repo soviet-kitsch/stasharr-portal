@@ -43,10 +43,8 @@
         </div>
         <button
           type="button"
-          class="close-modal"
+          class="app-baseline-button close-modal"
           [disabled]="requestSubmitLoading()"
-          pButton
-          severity="secondary"
           (click)="closeModal()"
         >
           Close
@@ -166,7 +164,7 @@
             }
 
             <div class="request-actions">
-              <button type="submit" [disabled]="requestSubmitLoading()" pButton>
+              <button class="app-baseline-button" type="submit" [disabled]="requestSubmitLoading()">
                 {{
                   requestSubmitLoading()
                     ? 'Submitting...'
@@ -179,11 +177,8 @@
               </button>
               <button
                 type="button"
-                class="secondary"
+                class="app-baseline-button secondary"
                 [disabled]="requestSubmitLoading()"
-                pButton
-                severity="secondary"
-                text
                 (click)="closeModal()"
               >
                 Cancel

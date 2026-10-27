@@ -157,20 +157,6 @@
   border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
 }
 
-:host ::ng-deep .close-modal.p-button {
-  font-size: 0.78rem;
-  padding: 0.34rem 0.62rem;
-}
-
-:host ::ng-deep .request-actions .p-button {
-  width: fit-content;
-  border-radius: 6px;
-}
-
-:host ::ng-deep .request-actions .secondary.p-button {
-  color: var(--media-dialog-muted-text);
-}
-
 @media (max-width: 880px) {
   .request-modal-content {
     max-height: 92dvh;

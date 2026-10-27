@@ -1,8 +1,8 @@
+import { newOperationKey } from '../../core/api/operation-key';
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
-import { ButtonDirective } from 'primeng/button';
 import { requestOutcomeMessage } from './request-outcome';
 import { Dialog } from 'primeng/dialog';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
@@ -21,16 +21,13 @@ interface ActionHistory {
 
 @Component({
   selector: 'app-request-actions',
-  imports: [ButtonDirective, Dialog, DatePipe, SceneRequestModalComponent],
+  imports: [Dialog, DatePipe, SceneRequestModalComponent],
   styleUrl: './request-actions.component.scss',
   template: `
     <div class="app-action-row request-actions">
       @if (tracked) {
         <button
-          pButton
-          size="small"
-          severity="secondary"
-          class="secondary-action small"
+          class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
           (click)="requestOpen.set(true)"
@@ -40,10 +37,7 @@ interface ActionHistory {
       }
       @if (tracked && (!condition || condition === 'WAITING_FOR_RELEASE')) {
         <button
-          pButton
-          size="small"
-          severity="secondary"
-          class="secondary-action small"
+          class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
           (click)="execute('search')"
@@ -53,10 +47,7 @@ interface ActionHistory {
       }
       @if (tracked) {
         <button
-          pButton
-          size="small"
-          severity="secondary"
-          class="secondary-action small"
+          class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
           (click)="deleteOpen.set(true)"
@@ -65,10 +56,7 @@ interface ActionHistory {
         </button>
       }
       <button
-        pButton
-        size="small"
-        severity="secondary"
-        class="secondary-action small"
+        class="app-baseline-button secondary-action small"
         type="button"
         [disabled]="busy()"
         (click)="showHistory()"
@@ -98,8 +86,7 @@ interface ActionHistory {
       </p>
       <div class="app-action-row">
         <button
-          pButton
-          severity="danger"
+          class="app-baseline-button"
           type="button"
           [disabled]="busy()"
           (click)="execute('dismiss')"
@@ -107,8 +94,7 @@ interface ActionHistory {
           {{ busy() ? 'Removing…' : 'Delete from Portal' }}
         </button>
         <button
-          pButton
-          severity="secondary"
+          class="app-baseline-button"
           type="button"
           [disabled]="busy()"
           (click)="deleteOpen.set(false)"
@@ -132,8 +118,7 @@ interface ActionHistory {
         @if (value.activeActionId) {
           <p>An action is running or its outcome needs checking.</p>
           <button
-            pButton
-            severity="secondary"
+            class="app-baseline-button"
             type="button"
             [disabled]="busy()"
             (click)="execute('outcome')"
@@ -143,8 +128,7 @@ interface ActionHistory {
         }
         @if (value.dismissed) {
           <button
-            pButton
-            severity="secondary"
+            class="app-baseline-button"
             type="button"
             [disabled]="busy()"
             (click)="execute('restore')"
@@ -236,7 +220,7 @@ export class RequestActionsComponent {
     if (this.busy()) return;
     this.busy.set(true);
     this.message.set(null);
-    const key = this.keys.get(action) ?? crypto.randomUUID();
+    const key = this.keys.get(action) ?? newOperationKey();
     this.keys.set(action, key);
     this.http
       .post<{ outcome: string }>(`/api/requests/${encodeURIComponent(this.sceneId)}/${action}`, {

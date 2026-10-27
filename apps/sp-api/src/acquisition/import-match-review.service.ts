@@ -10,6 +10,7 @@ import {
   appendBrowserPath,
   integrationBrowserBaseUrl,
 } from '../integrations/browser-url.util';
+import { IndexingService } from '../indexing/indexing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { resolveCatalogProviderKey } from '../providers/catalog/catalog-provider.util';
@@ -48,6 +49,7 @@ export interface ImportMatchReview {
   condition:
     | 'MATCH_FOUND'
     | 'POSSIBLE_FILE_MATCH'
+    | 'CATALOG_CONFLICT'
     | 'NO_FILE_CANDIDATE'
     | 'NOT_IMPORTED'
     | 'UNVERIFIED';
@@ -67,6 +69,8 @@ export interface ImportMatchReview {
     catalogIds: string[];
     files: { path: string; size: number | null }[];
   }[];
+  portalStatus?: string;
+  reconciliationMessage?: string;
   nextSteps: string[];
   limitations: string[];
 }
@@ -78,6 +82,7 @@ export class ImportMatchReviewService {
     private readonly integrations: IntegrationsService,
     private readonly catalogs: CatalogProviderService,
     private readonly whisparr: WhisparrAdapter,
+    private readonly indexing: IndexingService,
   ) {}
 
   async review(id: string): Promise<ImportMatchReview> {
@@ -109,9 +114,7 @@ export class ImportMatchReviewService {
       },
       stash: {
         state: stash ? 'UNAVAILABLE' : 'NOT_CONFIGURED',
-        viewUrl: stash
-          ? appendBrowserPath(integrationBrowserBaseUrl(stash) ?? '', 'scenes')
-          : null,
+        viewUrl: null,
         candidatesTruncated: false,
       },
       condition: 'UNVERIFIED',
@@ -238,6 +241,16 @@ export class ImportMatchReviewService {
           Number(a.evidence === 'CATALOG_ID'),
       );
     }
+    // Never send a scene-specific action to the unfiltered Stash overview.
+    // Multiple candidates retain their own links; none is chosen automatically.
+    const linkedCandidates = result.candidates.filter(
+      (candidate) =>
+        candidate.files.length > 0 && candidate.evidence === 'CATALOG_ID',
+    );
+    const targets = linkedCandidates.length
+      ? linkedCandidates
+      : result.candidates.filter((candidate) => candidate.files.length > 0);
+    if (targets.length === 1) result.stash.viewUrl = targets[0].viewUrl;
     const exact = result.candidates.some(
       (candidate) =>
         candidate.evidence === 'CATALOG_ID' && candidate.files.length,
@@ -248,7 +261,7 @@ export class ImportMatchReviewService {
         'Stash now lists this catalog link with a file. Refresh Portal status to reconcile the library.';
       result.nextSteps = [
         'Open the matching Stash scene and confirm that its file can be played.',
-        'Refresh Portal status after confirming the match.',
+        'Use Refresh this scene to reconcile Portal without downloading again.',
       ];
     } else if (
       result.whisparr.state !== 'CHECKED' ||
@@ -267,6 +280,22 @@ export class ImportMatchReviewService {
       result.nextSteps = [
         'Open Whisparr and inspect the request, download and import queue before trying another acquisition.',
       ];
+    } else if (
+      result.candidates.some(
+        (candidate) =>
+          candidate.catalogIds.length &&
+          !candidate.catalogIds.includes(sceneId),
+      )
+    ) {
+      result.condition = 'CATALOG_CONFLICT';
+      result.summary =
+        'A possible Stash file is linked to a different catalog scene. Verify whether Whisparr or Stash has the incorrect association before changing either.';
+      result.nextSteps = [
+        'Open the candidate Stash scene and the Whisparr entry. Compare the actual video, performer, studio, duration, date and scene version with the requested scene.',
+        'If Whisparr has the wrong file: correct its scene assignment using manual import, preserving the media file. Then acquire the originally requested scene only if it is still missing.',
+        'If the file is correct but Stash has the wrong catalog link: use Identify on that Stash scene to review and save the intended link. Preserve legitimate alternate-version links.',
+        'After correcting the association, use Refresh this scene here to update Portal. Re-request alone cannot repair an incorrect match.',
+      ];
     } else if (result.candidates.length) {
       result.condition = 'POSSIBLE_FILE_MATCH';
       result.summary =
@@ -274,7 +303,7 @@ export class ImportMatchReviewService {
       result.nextSteps = [
         'Open each candidate in Stash and compare the file, duration, studio, release date and scene version.',
         'Use Stash’s Identify tool to review metadata. Save the intended catalog association only after confirming it; keep legitimate alternate-version links.',
-        'Refresh Portal status after identification. A new download is not needed solely to repair a catalog link.',
+        'After confirming and saving the catalog link in Stash, use Refresh this scene. A new download is not needed solely to repair a catalog link.',
       ];
     } else {
       result.condition = 'NO_FILE_CANDIDATE';
@@ -292,6 +321,27 @@ export class ImportMatchReviewService {
         'Only the first 20 records from each lookup were inspected. Open Stash to review the remaining candidates.',
       );
     return result;
+  }
+
+  async reconcile(sceneId: string): Promise<ImportMatchReview> {
+    const review = await this.review(sceneId);
+    if (review.stash.state !== 'CHECKED' || review.whisparr.state !== 'CHECKED')
+      throw new BadGatewayException(
+        'The integrations could not both be verified. Restore their connections before refreshing this scene.',
+      );
+    await this.indexing.requestImmediateRefresh(
+      [review.sceneId],
+      'import-recovery',
+    );
+    const row = await this.prisma.sceneIndex.findUnique({
+      where: { stashId: review.sceneId },
+    });
+    review.portalStatus = row?.computedLifecycle;
+    review.reconciliationMessage =
+      row?.computedLifecycle === 'AVAILABLE'
+        ? 'Portal now shows this scene as available in Stash.'
+        : 'Portal status was rechecked. This scene still needs the import or catalog-link correction described below; no new download was started.';
+    return review;
   }
 
   private async config(type: IntegrationType): Promise<Config | null> {

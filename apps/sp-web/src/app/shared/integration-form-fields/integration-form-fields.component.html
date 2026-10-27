@@ -35,7 +35,12 @@
         Choose the starting folder and quality profile for new requests. Individual request settings
         can still be reviewed.
       </p>
-      <button type="button" [disabled]="loadingDefaultOptions" (click)="loadDefaultOptions.emit()">
+      <button
+        class="app-baseline-button"
+        type="button"
+        [disabled]="loadingDefaultOptions"
+        (click)="loadDefaultOptions.emit()"
+      >
         {{ loadingDefaultOptions ? 'Loading choices...' : 'Load choices from Whisparr' }}
       </button>
       @if (defaultOptionsError) {

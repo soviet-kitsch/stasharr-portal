@@ -8,6 +8,7 @@ describe('ImportMatchReviewService', () => {
   let prisma: any;
   let whisparr: any;
   let service: ImportMatchReviewService;
+  let indexing: any;
   const scene = (overrides: any = {}) => ({
     id: 'local-1',
     title: 'Local record',
@@ -31,36 +32,33 @@ describe('ImportMatchReviewService', () => {
     jest.resetAllMocks();
     prisma = {
       sceneIndex: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            stashId: 'catalog-1',
-            stashLastSyncedAt: new Date('2026-10-27T10:00:00Z'),
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          stashId: 'catalog-1',
+          stashLastSyncedAt: new Date('2026-10-27T10:00:00Z'),
+        }),
       },
     };
     integrations = {
-      findOne: jest
-        .fn()
-        .mockImplementation(async (type) => ({
-          enabled: true,
-          status: IntegrationStatus.CONFIGURED,
-          baseUrl: `http://${type.toLowerCase()}:9999`,
-          browserUrl: `https://media.example/${type.toLowerCase()}`,
-          apiKey: 'test-key',
-        })),
+      findOne: jest.fn().mockImplementation(async (type) => ({
+        enabled: true,
+        status: IntegrationStatus.CONFIGURED,
+        baseUrl: `http://${type.toLowerCase()}:9999`,
+        browserUrl: `https://media.example/${type.toLowerCase()}`,
+        apiKey: 'test-key',
+      })),
     };
     whisparr = {
-      findMovieByStashId: jest
-        .fn()
-        .mockResolvedValue({
-          movieId: 7,
-          stashId: 'catalog-1',
-          hasFile: true,
-          filePath: '/whis/Example.mp4',
-          fileSize: 2048,
-        }),
+      findMovieByStashId: jest.fn().mockResolvedValue({
+        movieId: 7,
+        stashId: 'catalog-1',
+        hasFile: true,
+        filePath: '/whis/Example.mp4',
+        fileSize: 2048,
+      }),
       buildSceneViewUrl: jest.fn((base, id) => `${base}/movie/${id}`),
+    };
+    indexing = {
+      requestImmediateRefresh: jest.fn().mockResolvedValue(undefined),
     };
     service = new ImportMatchReviewService(
       prisma,
@@ -71,26 +69,25 @@ describe('ImportMatchReviewService', () => {
           .mockResolvedValue({ providerKey: 'STASHDB' }),
       } as any,
       whisparr,
+      indexing,
     );
     fetchMock.mockResolvedValue(response([]));
   });
   it('shows a filename/size candidate with conflicting catalog id as unverified version guidance', async () => {
-    fetchMock
-      .mockResolvedValueOnce(response([]))
-      .mockResolvedValueOnce(
-        response([
-          scene({
-            stash_ids: [
-              {
-                endpoint: 'https://stashdb.org/graphql',
-                stash_id: 'different-version',
-              },
-            ],
-          }),
-        ]),
-      );
+    fetchMock.mockResolvedValueOnce(response([])).mockResolvedValueOnce(
+      response([
+        scene({
+          stash_ids: [
+            {
+              endpoint: 'https://stashdb.org/graphql',
+              stash_id: 'different-version',
+            },
+          ],
+        }),
+      ]),
+    );
     const result = await service.review('catalog-1');
-    expect(result.condition).toBe('POSSIBLE_FILE_MATCH');
+    expect(result.condition).toBe('CATALOG_CONFLICT');
     expect(result.candidates[0]).toMatchObject({
       evidence: 'FILENAME_AND_SIZE',
       catalogIds: ['different-version'],
@@ -123,7 +120,7 @@ describe('ImportMatchReviewService', () => {
     const result = await service.review('catalog-1');
     expect(result.condition).toBe('MATCH_FOUND');
     expect(result.candidates[0].evidence).toBe('CATALOG_ID');
-    expect(result.nextSteps.join(' ')).toContain('Refresh Portal');
+    expect(result.nextSteps.join(' ')).toContain('Refresh this scene');
   });
   it('never treats an inactive-provider id or a directory substring as an exact match', async () => {
     fetchMock.mockResolvedValue(
@@ -212,4 +209,64 @@ describe('ImportMatchReviewService', () => {
       expect(result.candidates).toEqual([]);
     },
   );
+  it('links a unique candidate directly, but never chooses between multiple file candidates', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([scene()]));
+    expect((await service.review('catalog-1')).stash.viewUrl).toBe(
+      'https://media.example/stash/scenes/local-1',
+    );
+    fetchMock
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([scene(), scene({ id: 'local-2' })]));
+    const multiple = await service.review('catalog-1');
+    expect(multiple.stash.viewUrl).toBeNull();
+    expect(multiple.candidates).toHaveLength(2);
+    fetchMock.mockResolvedValue(response([]));
+    expect((await service.review('catalog-1')).stash.viewUrl).toBeNull();
+  });
+  it('refreshes observations for the requested scene and reports the actual resulting lifecycle', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response([
+        scene({
+          stash_ids: [
+            { endpoint: 'https://stashdb.org/graphql', stash_id: 'catalog-1' },
+          ],
+        }),
+      ]),
+    );
+    prisma.sceneIndex.findUnique
+      .mockResolvedValueOnce({ stashId: 'catalog-1' })
+      .mockResolvedValueOnce({ computedLifecycle: 'AVAILABLE' });
+    const result = await service.reconcile('catalog-1');
+    expect(indexing.requestImmediateRefresh).toHaveBeenCalledWith(
+      ['catalog-1'],
+      'import-recovery',
+    );
+    expect(result.portalStatus).toBe('AVAILABLE');
+    expect(result.reconciliationMessage).toContain('available');
+    expect(
+      fetchMock.mock.calls.every(
+        (call) => !JSON.parse(call[1].body).query.includes('mutation'),
+      ),
+    ).toBe(true);
+  });
+  it('does not claim a filename candidate or a conflicting link was repaired', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([scene()]));
+    prisma.sceneIndex.findUnique.mockResolvedValue({
+      computedLifecycle: 'IMPORT_PENDING',
+    });
+    const result = await service.reconcile('catalog-1');
+    expect(result.portalStatus).toBe('IMPORT_PENDING');
+    expect(result.reconciliationMessage).toContain('still needs');
+  });
+  it('refuses reconciliation while either live provider is unavailable', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'));
+    await expect(service.reconcile('catalog-1')).rejects.toThrow(
+      'both be verified',
+    );
+    expect(indexing.requestImmediateRefresh).not.toHaveBeenCalled();
+  });
 });

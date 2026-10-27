@@ -9,6 +9,18 @@ describe('ImportMatchReviewComponent', () => {
   let component: any;
   beforeEach(() => {
     api = {
+      post: vi
+        .fn()
+        .mockReturnValue(
+          of({
+            sceneId: 'one',
+            portalStatus: 'AVAILABLE',
+            reconciliationMessage: 'Available',
+            candidates: [],
+            nextSteps: [],
+            limitations: [],
+          }),
+        ),
       get: vi
         .fn()
         .mockReturnValue(of({ sceneId: 'one', candidates: [], nextSteps: [], limitations: [] })),
@@ -45,5 +57,27 @@ describe('ImportMatchReviewComponent', () => {
     component.load();
     expect(component.error()).toBeNull();
     expect(component.review().sceneId).toBe('one');
+  });
+  it('refreshes the scene only on explicit action and updates the parent when the review closes', () => {
+    const changed = vi.spyOn(component.reconciled, 'emit');
+    component.show();
+    expect(api.post).not.toHaveBeenCalled();
+    component.reconcile();
+    expect(api.post).toHaveBeenCalledWith('/api/acquisition/scenes/one/reconcile', {});
+    expect(component.review().portalStatus).toBe('AVAILABLE');
+    expect(changed).not.toHaveBeenCalled();
+    component.setOpen(false);
+    expect(changed).toHaveBeenCalledOnce();
+  });
+  it('blocks duplicate refreshes and keeps failures visible without claiming recovery', () => {
+    const response = new Subject();
+    api.post.mockReturnValue(response);
+    component.reconcile();
+    component.reconcile();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(component.reconciling()).toBe(true);
+    response.error(new Error('offline'));
+    expect(component.reconciling()).toBe(false);
+    expect(component.error()).toContain('could not be confirmed');
   });
 });
