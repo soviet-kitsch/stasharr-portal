@@ -6,7 +6,19 @@
         Track requested scenes through Whisparr and into your Stash library.
       </p>
     </div>
+    <button
+      type="button"
+      class="secondary-action"
+      [disabled]="refreshing() || inFlight()"
+      (click)="refreshStatus()"
+    >
+      {{ refreshing() ? 'Refreshing status…' : 'Refresh status' }}
+    </button>
   </header>
+
+  @if (refreshError(); as message) {
+    <p-message severity="warn" styleClass="app-page-message" role="status">{{ message }}</p-message>
+  }
 
   @if (pageAlert(); as alert) {
     <section
@@ -161,7 +173,16 @@
 
                   <div class="card-body">
                     <div class="card-status-row">
-                      <app-scene-status-badge class="row-status-badge" [status]="item.status" />
+                      @if (item.reconciliation; as reconciliation) {
+                        <span
+                          class="reconciliation-label"
+                          [class.needs-attention]="reconciliation.needsAttention"
+                          [attr.data-condition]="reconciliation.condition"
+                          >{{ reconciliation.label }}</span
+                        >
+                      } @else {
+                        <app-scene-status-badge class="row-status-badge" [status]="item.status" />
+                      }
 
                       @if (item.releaseDate) {
                         <p class="release-date">
@@ -187,6 +208,13 @@
                       <p class="helper" [class.helper-failed]="item.status.state === 'FAILED'">
                         {{ lifecycleHelperText(item) }}
                       </p>
+
+                      @if (item.reconciliation?.checkedAt; as checkedAt) {
+                        <p class="detail">
+                          Last complete check:
+                          <time [attr.datetime]="checkedAt">{{ checkedAt | date: 'medium' }}</time>
+                        </p>
+                      }
 
                       @if (operationalDetail(item); as detail) {
                         <p class="detail" [class.detail-failed]="item.status.state === 'FAILED'">

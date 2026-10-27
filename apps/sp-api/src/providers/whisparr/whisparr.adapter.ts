@@ -193,10 +193,12 @@ export class WhisparrAdapter {
       const movie = this.parseMovieLookupEntry(payload);
       if (!movie) {
         this.logger.warn(
-          `Whisparr movie-by-id payload could not be normalized: ${this.safeJson({
-            movieId,
-            payloadPreview: this.previewPayload(payload),
-          })}`,
+          `Whisparr movie-by-id payload could not be normalized: ${this.safeJson(
+            {
+              movieId,
+              payloadPreview: this.previewPayload(payload),
+            },
+          )}`,
         );
         return null;
       }
@@ -267,6 +269,25 @@ export class WhisparrAdapter {
         .map((entry) => this.parseMovieLookupEntry(entry))
         .filter((entry): entry is WhisparrMovieLookupResult => entry !== null);
 
+      if (
+        normalized.length !== records.length ||
+        normalized.some(
+          (movie) => !Number.isInteger(movie.movieId) || movie.movieId <= 0,
+        ) ||
+        records.some(
+          (entry) =>
+            typeof (entry as Record<string, unknown>)?.hasFile !== 'boolean',
+        ) ||
+        new Set(normalized.map((movie) => movie.movieId)).size !==
+          normalized.length ||
+        new Set(normalized.map((movie) => movie.stashId)).size !==
+          normalized.length
+      ) {
+        throw new BadGatewayException(
+          'Whisparr movie snapshot is incomplete or ambiguous; previous observations are retained.',
+        );
+      }
+
       this.logger.debug(
         `Whisparr movie normalized snapshot: ${this.safeJson({
           count: normalized.length,
@@ -304,7 +325,9 @@ export class WhisparrAdapter {
 
       return payload
         .map((entry) => this.parseQualityProfileEntry(entry))
-        .filter((entry): entry is WhisparrQualityProfileOption => entry !== null);
+        .filter(
+          (entry): entry is WhisparrQualityProfileOption => entry !== null,
+        );
     });
   }
 
@@ -438,6 +461,11 @@ export class WhisparrAdapter {
       );
 
       if (queuePage.records.length === 0) {
+        if (totalRecords !== null && allRecords.length < totalRecords) {
+          throw new BadGatewayException(
+            'Whisparr queue snapshot ended before all records were received.',
+          );
+        }
         break;
       }
 
@@ -464,6 +492,9 @@ export class WhisparrAdapter {
             totalRecords,
           },
         )}`,
+      );
+      throw new BadGatewayException(
+        'Whisparr queue snapshot exceeded the pagination limit.',
       );
     }
 
@@ -802,6 +833,12 @@ export class WhisparrAdapter {
       const payloadRecord = payload as Record<string, unknown>;
       const records = payloadRecord.records;
       if (Array.isArray(records)) {
+        const totalRecords = this.readNumber(payloadRecord.totalRecords);
+        if (totalRecords !== null && totalRecords !== records.length) {
+          throw new BadGatewayException(
+            'Whisparr movie collection is a partial snapshot.',
+          );
+        }
         this.logger.debug(
           `Whisparr ${collectionName} payload includes records wrapper: ${this.safeJson(
             {

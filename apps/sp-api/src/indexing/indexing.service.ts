@@ -1,4 +1,13 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import {
+  ACQUISITION_SNAPSHOT_JOBS,
+  AcquisitionEvidence,
+} from '../acquisition/acquisition-reconciliation';
 import {
   IntegrationStatus,
   IntegrationType,
@@ -487,6 +496,21 @@ export class IndexingService {
   }
 
   async runManualSync(job?: string): Promise<void> {
+    if (job === 'acquisition') {
+      // Refresh observations only: never search, submit, identify or delete media.
+      for (const sync of [
+        () => this.syncWhisparrMovies('acquisition-review'),
+        () => this.syncWhisparrQueue('acquisition-review'),
+        () => this.syncLibraryProjection('acquisition-review'),
+      ]) {
+        if ((await sync()) === null) {
+          throw new ConflictException(
+            'A required refresh is already running. Wait briefly and refresh again.',
+          );
+        }
+      }
+      return;
+    }
     if (!job || job === 'all') {
       await this.bootstrapIndex('manual');
       await this.syncWhisparrMovies('manual');
@@ -516,6 +540,29 @@ export class IndexingService {
       default:
         throw new BadRequestException(`Unsupported sync job: ${job}`);
     }
+  }
+
+  async getAcquisitionEvidence(): Promise<AcquisitionEvidence> {
+    const [whisparrReady, stashReady, catalogReady, states] = await Promise.all(
+      [
+        this.isIntegrationConfigured(IntegrationType.WHISPARR),
+        this.isIntegrationConfigured(IntegrationType.STASH),
+        this.catalogProviderService.getConfiguredCatalogProviderType(),
+        this.prisma.syncState.findMany({
+          where: { jobName: { in: Object.values(ACQUISITION_SNAPSHOT_JOBS) } },
+          select: {
+            jobName: true,
+            status: true,
+            startedAt: true,
+            lastSuccessAt: true,
+          },
+        }),
+      ],
+    );
+    return {
+      sourcesReady: whisparrReady && stashReady && catalogReady !== null,
+      states,
+    };
   }
 
   async getSceneIndexSummary(): Promise<SceneIndexSummarySnapshot> {
@@ -962,11 +1009,11 @@ export class IndexingService {
 
     const now = new Date();
     const movies = await this.whisparrAdapter.getMovieSnapshot(config);
-    const snapshotMovieIds = new Set<number>();
+    const snapshotStashIds = new Set<string>();
     const patches: SceneIndexPatch[] = [];
 
     for (const movie of movies) {
-      snapshotMovieIds.add(movie.movieId);
+      snapshotStashIds.add(movie.stashId);
       patches.push({
         stashId: movie.stashId,
         whisparrMovieId: movie.movieId,
@@ -977,17 +1024,18 @@ export class IndexingService {
     }
 
     const staleRows = await this.prisma.sceneIndex.findMany({
-      where: snapshotMovieIds.size
-        ? {
-            whisparrMovieId: {
-              notIn: Array.from(snapshotMovieIds),
-            },
-          }
-        : {
-            whisparrMovieId: {
-              not: null,
-            },
-          },
+      // Match by catalog identity, not numeric movie ID: an upstream record can
+      // retain its numeric ID while changing its catalog reference. Include
+      // never-linked request rows so a full snapshot records negative evidence.
+      where: {
+        ...(snapshotStashIds.size
+          ? { stashId: { notIn: Array.from(snapshotStashIds) } }
+          : {}),
+        OR: [
+          { whisparrMovieId: { not: null } },
+          { requestStatus: { not: null } },
+        ],
+      },
       select: {
         stashId: true,
       },
@@ -1021,7 +1069,7 @@ export class IndexingService {
       updatedCount: patches.length,
       diagnostics: {
         whisparrMovies: movies.length,
-        whisparrMovieIds: snapshotMovieIds.size,
+        whisparrMovieIds: movies.length,
         staleMovieRows: staleRows.length,
         patchCount: patches.length,
       },
@@ -1218,6 +1266,8 @@ export class IndexingService {
     let pages = 0;
     let localSceneCount = 0;
     let projectionWrites = 0;
+    const seenSceneIds = new Set<string>();
+    let expectedSceneCount: number | null = null;
 
     while (true) {
       const snapshotPage = await this.stashAdapter.getLocalLibraryScenePage(
@@ -1228,6 +1278,26 @@ export class IndexingService {
         },
         activeCatalogProviderKey,
       );
+      if (
+        !Number.isInteger(snapshotPage.total) ||
+        snapshotPage.total < 0 ||
+        (expectedSceneCount !== null &&
+          expectedSceneCount !== snapshotPage.total) ||
+        (snapshotPage.hasMore && snapshotPage.items.length === 0)
+      ) {
+        throw new ConflictException(
+          'Stash library snapshot is incomplete or changed during pagination.',
+        );
+      }
+      expectedSceneCount = snapshotPage.total;
+      for (const item of snapshotPage.items) {
+        if (seenSceneIds.has(item.id)) {
+          throw new ConflictException(
+            'Stash library snapshot repeated a scene during pagination.',
+          );
+        }
+        seenSceneIds.add(item.id);
+      }
       pages += 1;
       localSceneCount += snapshotPage.items.length;
       projectionWrites += await this.upsertLibrarySceneProjectionPage(
@@ -1247,11 +1317,17 @@ export class IndexingService {
         }
       }
 
-      if (!snapshotPage.hasMore || snapshotPage.items.length === 0) {
+      if (!snapshotPage.hasMore) {
         break;
       }
 
       page += 1;
+    }
+
+    if (seenSceneIds.size !== expectedSceneCount) {
+      throw new ConflictException(
+        'Stash library snapshot ended before every scene was received.',
+      );
     }
 
     const [deletedRows, availabilityWrites] = await Promise.all([
@@ -1682,6 +1758,28 @@ export class IndexingService {
     patch: SceneIndexPatch,
     queueItems?: ResolverQueueItem[],
   ): SceneIndexUpsertData {
+    if (
+      existing &&
+      patch.whisparrLastSyncedAt &&
+      ((existing.whisparrLastSyncedAt &&
+        patch.whisparrLastSyncedAt < existing.whisparrLastSyncedAt) ||
+        (patch.whisparrMovieId === null &&
+          existing.requestUpdatedAt &&
+          patch.whisparrLastSyncedAt < existing.requestUpdatedAt))
+    ) {
+      // A slow snapshot must not erase a newer submission or queue observation.
+      patch = {
+        ...patch,
+        whisparrMovieId: existing.whisparrMovieId,
+        whisparrHasFile: existing.whisparrHasFile,
+        whisparrQueuePosition: existing.whisparrQueuePosition,
+        whisparrQueueStatus: existing.whisparrQueueStatus,
+        whisparrQueueState: existing.whisparrQueueState,
+        whisparrErrorMessage: existing.whisparrErrorMessage,
+        whisparrLastSyncedAt: existing.whisparrLastSyncedAt,
+        lastSyncedAt: existing.lastSyncedAt,
+      };
+    }
     const merged: SceneIndexUpsertData = {
       stashId: patch.stashId,
       requestStatus: this.pickValue(

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { AcquisitionService } from '../../core/api/acquisition.service';
 import {
   AcquisitionLifecycleFilter,
@@ -213,6 +213,7 @@ describe('AcquisitionPageComponent', () => {
     };
 
     const acquisitionService = {
+      refreshStatus: vi.fn(() => of({})),
       getScenesFeed: vi.fn((page: number, perPage: number, lifecycle = 'ANY') =>
         of(responses[lifecycle as AcquisitionLifecycleFilter] ?? responses.ANY),
       ),
@@ -272,6 +273,67 @@ describe('AcquisitionPageComponent', () => {
       setRuntimeHealth: (next: RuntimeHealthResponse) => runtimeHealthState.set(next),
     };
   }
+
+  it('shows orphan diagnosis instead of claiming Whisparr is picking up the request', async () => {
+    const { fixture } = await renderPage({
+      responses: {
+        ANY: buildResponse([
+          buildItem({
+            status: { state: 'REQUESTED' },
+            whisparrViewUrl: null,
+            reconciliation: {
+              condition: 'ORPHANED_REQUEST',
+              label: 'Missing in Whisparr',
+              message: 'No Whisparr entry or matching Stash catalog link was found.',
+              needsAttention: true,
+              checkedAt: '2026-10-27T13:00:00Z',
+            },
+          }),
+        ]),
+      },
+    });
+    expect(
+      fixture.nativeElement.querySelector('[data-condition="ORPHANED_REQUEST"]')?.textContent,
+    ).toContain('Missing in Whisparr');
+    expect(fixture.nativeElement.textContent).toContain('Last complete check:');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Waiting for Whisparr to pick up this request.',
+    );
+  });
+
+  it('disables refresh while it is running and reloads the feed when it finishes', async () => {
+    const { fixture, acquisitionService } = await renderPage();
+    const pending = new Subject<unknown>();
+    acquisitionService.refreshStatus.mockReturnValue(pending);
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((element) =>
+      (element as HTMLButtonElement).textContent?.includes('Refresh status'),
+    ) as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+    expect(button.disabled).toBe(true);
+    pending.next({});
+    pending.complete();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(acquisitionService.refreshStatus).toHaveBeenCalledTimes(1);
+    expect(acquisitionService.getScenesFeed).toHaveBeenCalledTimes(2);
+    expect(button.disabled).toBe(false);
+  });
+
+  it('reloads and shows a clear message if a refresh fails', async () => {
+    const { fixture, acquisitionService } = await renderPage();
+    const pending = new Subject<unknown>();
+    acquisitionService.refreshStatus.mockReturnValue(pending);
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find((element) =>
+      (element as HTMLButtonElement).textContent?.includes('Refresh status'),
+    ) as HTMLButtonElement;
+    button.click();
+    pending.error(new Error('offline'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('The refresh did not finish.');
+    expect(acquisitionService.getScenesFeed).toHaveBeenCalledTimes(2);
+  });
 
   it('renders summary cards, prioritizes failed sections, and exposes scene plus Whisparr actions', async () => {
     const { fixture, acquisitionService, runtimeHealthService } = await renderPage();

@@ -54,6 +54,9 @@ describe('AcquisitionService', () => {
   const sceneIndexFindManyMock = jest.fn();
 
   const indexingService = {
+    getAcquisitionEvidence: jest
+      .fn()
+      .mockResolvedValue({ sourcesReady: false, states: [] }),
     requestMetadataHydrationForStashIds:
       requestMetadataHydrationForStashIdsMock,
     getSceneIndexSummary: getSceneIndexSummaryMock,

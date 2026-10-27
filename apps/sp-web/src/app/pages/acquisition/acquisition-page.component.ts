@@ -9,6 +9,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize, Subscription } from 'rxjs';
 import { Message } from 'primeng/message';
@@ -56,7 +57,7 @@ interface AcquisitionPageAlert {
 
 @Component({
   selector: 'app-acquisition-page',
-  imports: [RouterLink, Message, ProgressSpinner, SceneStatusBadgeComponent],
+  imports: [RouterLink, Message, ProgressSpinner, SceneStatusBadgeComponent, DatePipe],
   templateUrl: './acquisition-page.component.html',
   styleUrl: './acquisition-page.component.scss',
 })
@@ -107,6 +108,27 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   protected readonly loading = signal(false);
+  protected readonly refreshing = signal(false);
+  protected readonly refreshError = signal<string | null>(null);
+  private refreshSubscription: Subscription | null = null;
+
+  protected refreshStatus(): void {
+    if (this.refreshing() || this.inFlight()) return;
+    this.refreshing.set(true);
+    this.refreshError.set(null);
+    this.refreshSubscription = this.acquisitionService
+      .refreshStatus()
+      .pipe(finalize(() => this.refreshing.set(false)))
+      .subscribe({
+        next: () => this.resetFeedAndReload(),
+        error: () => {
+          this.refreshError.set(
+            'The refresh did not finish. A service may be unavailable or another refresh may be running.',
+          );
+          this.resetFeedAndReload();
+        },
+      });
+  }
   protected readonly loadingMore = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly loadMoreError = signal<string | null>(null);
@@ -203,6 +225,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   ngOnDestroy(): void {
+    this.refreshSubscription?.unsubscribe();
     if (this.observer && this.sentinelElement) {
       this.observer.unobserve(this.sentinelElement);
     }
@@ -302,6 +325,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   protected lifecycleHelperText(item: AcquisitionSceneItem): string {
+    if (item.reconciliation) return item.reconciliation.message;
     switch (item.status.state) {
       case 'REQUESTED':
         return 'Waiting for Whisparr to pick up this request.';
@@ -317,6 +341,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   protected operationalDetail(item: AcquisitionSceneItem): string | null {
+    if (item.reconciliation) return null;
     if (item.status.state === 'FAILED') {
       if (item.errorMessage?.trim()) {
         return `Whisparr reported: ${item.errorMessage.trim()}`;

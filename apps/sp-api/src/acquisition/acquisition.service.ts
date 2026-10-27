@@ -20,6 +20,10 @@ import { CatalogProviderService } from '../providers/catalog/catalog-provider.se
 import { withStashImageSize } from '../providers/stashdb/stashdb-image-url.util';
 import { WhisparrAdapter } from '../providers/whisparr/whisparr.adapter';
 import {
+  AcquisitionEvidence,
+  reconcileAcquisition,
+} from './acquisition-reconciliation';
+import {
   AcquisitionCountsByLifecycleDto,
   AcquisitionSceneItemDto,
   AcquisitionScenesFeedDto,
@@ -56,34 +60,37 @@ export class AcquisitionService {
   ): Promise<AcquisitionScenesFeedDto> {
     const startedAt = Date.now();
     const where = this.buildWhereClause(lifecycle);
+    // Read snapshot generations first. Reading them after the rows could pair
+    // an older row with a newer successful snapshot and falsely prove absence.
+    const evidence = await this.indexingService.getAcquisitionEvidence();
     const [rows, summary, whisparrConfig, catalogProviderType] =
       await Promise.all([
-      this.prisma.sceneIndex.findMany({
-        where,
-        orderBy: [
-          {
-            lifecycleSortOrder: 'asc',
-          },
-          {
-            whisparrQueuePosition: 'asc',
-          },
-          {
-            requestUpdatedAt: 'desc',
-          },
-          {
-            whisparrMovieId: 'asc',
-          },
-          {
-            stashId: 'asc',
-          },
-        ],
-        skip: (page - 1) * perPage,
-        take: perPage,
-      }),
-      this.indexingService.getSceneIndexSummary(),
-      this.getWhisparrConfig(),
-      this.catalogProviderService.getConfiguredCatalogProviderType(),
-    ]);
+        this.prisma.sceneIndex.findMany({
+          where,
+          orderBy: [
+            {
+              lifecycleSortOrder: 'asc',
+            },
+            {
+              whisparrQueuePosition: 'asc',
+            },
+            {
+              requestUpdatedAt: 'desc',
+            },
+            {
+              whisparrMovieId: 'asc',
+            },
+            {
+              stashId: 'asc',
+            },
+          ],
+          skip: (page - 1) * perPage,
+          take: perPage,
+        }),
+        this.indexingService.getSceneIndexSummary(),
+        this.getWhisparrConfig(),
+        this.catalogProviderService.getConfiguredCatalogProviderType(),
+      ]);
     const countsByLifecycle = this.toCountsByLifecycle(summary);
     const total =
       lifecycle === 'ANY'
@@ -122,6 +129,7 @@ export class AcquisitionService {
           row,
           whisparrConfig?.baseUrl ?? null,
           catalogProviderType ?? 'STASHDB',
+          evidence,
         ),
       ),
     };
@@ -186,6 +194,7 @@ export class AcquisitionService {
     row: SceneIndex,
     whisparrBaseUrl: string | null,
     source: 'STASHDB' | 'FANSDB',
+    evidence: AcquisitionEvidence,
   ): AcquisitionSceneItemDto {
     const title = row.title?.trim() || row.stashId;
     const description =
@@ -208,6 +217,7 @@ export class AcquisitionService {
       type: 'SCENE',
       source,
       status: this.indexingService.toSceneStatus(row),
+      reconciliation: reconcileAcquisition(row, evidence),
       queueStatus: row.whisparrQueueStatus,
       queueState: row.whisparrQueueState,
       errorMessage: row.whisparrErrorMessage,

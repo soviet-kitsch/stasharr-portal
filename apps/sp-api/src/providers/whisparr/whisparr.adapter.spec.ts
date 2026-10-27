@@ -31,6 +31,60 @@ describe('WhisparrAdapter', () => {
     );
   });
 
+  describe('complete snapshot safety', () => {
+    it.each([
+      [{ id: 1, stashId: 'a', hasFile: true }, { id: 2 }],
+      [
+        { id: 1, stashId: 'a', hasFile: true },
+        { id: 1, stashId: 'b', hasFile: false },
+      ],
+      [
+        { id: 1, stashId: 'a', hasFile: true },
+        { id: 2, stashId: 'a', hasFile: false },
+      ],
+      [{ id: 1, stashId: 'a' }],
+    ])(
+      'rejects an invalid or ambiguous full movie snapshot %#',
+      async (...records) => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => records });
+        await expect(
+          adapter.getMovieSnapshot({ baseUrl: 'http://whisparr.local' }),
+        ).rejects.toThrow(BadGatewayException);
+        expect(runtimeHealthService.recordFailure).toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a partial movie collection wrapper', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          totalRecords: 2,
+          records: [{ id: 1, stashId: 'a', hasFile: true }],
+        }),
+      });
+      await expect(
+        adapter.getMovieSnapshot({ baseUrl: 'http://whisparr.local' }),
+      ).rejects.toThrow('partial snapshot');
+    });
+
+    it('accepts a valid empty movie snapshot', async () => {
+      fetchMock.mockResolvedValue({ ok: true, json: async () => [] });
+      await expect(
+        adapter.getMovieSnapshot({ baseUrl: 'http://whisparr.local' }),
+      ).resolves.toEqual([]);
+    });
+
+    it('rejects an unexpectedly empty page before the queue is complete', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ totalRecords: 1, records: [] }),
+      });
+      await expect(
+        adapter.getQueueSnapshot({ baseUrl: 'http://whisparr.local' }),
+      ).rejects.toThrow('before all records');
+    });
+  });
+
   describe('findMovieByStashId', () => {
     it('returns null for empty result array', async () => {
       fetchMock.mockResolvedValue({
@@ -402,11 +456,7 @@ describe('WhisparrAdapter', () => {
     it('normalizes quality profiles', async () => {
       fetchMock.mockResolvedValue({
         ok: true,
-        json: () =>
-          Promise.resolve([
-            { id: 10, name: 'Default' },
-            { id: 11 },
-          ]),
+        json: () => Promise.resolve([{ id: 10, name: 'Default' }, { id: 11 }]),
       } as Response);
 
       await expect(

@@ -368,6 +368,17 @@ a {
   font-size: 0.8rem;
 }
 
+.reconciliation-label {
+  border: 1px solid var(--border-color, currentColor);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.reconciliation-label.needs-attention {
+  color: var(--p-orange-300, #fdba74);
+}
+
 .load-sentinel {
   height: 1px;
 }

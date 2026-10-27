@@ -708,6 +708,216 @@ describe('IndexingService', () => {
     );
   });
 
+  it('records negative full-snapshot evidence for a request that never had a movie ID', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({
+          requestStatus: RequestStatus.REQUESTED,
+          computedLifecycle: 'REQUESTED',
+        }),
+      ],
+    });
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.syncWhisparrMovies('test', true);
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      whisparrMovieId: null,
+      whisparrLastSyncedAt: expect.any(Date),
+    });
+  });
+
+  it('clears a previous catalog association when the same movie ID now belongs to a different catalog record', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({
+          requestStatus: RequestStatus.REQUESTED,
+          whisparrMovieId: 22,
+          whisparrHasFile: true,
+          computedLifecycle: 'IMPORT_PENDING',
+        }),
+      ],
+    });
+    getMovieSnapshotMock.mockResolvedValue([
+      { movieId: 22, stashId: 'replacement-scene', hasFile: true },
+    ]);
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.syncWhisparrMovies('test', true);
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      whisparrMovieId: null,
+      whisparrHasFile: null,
+      computedLifecycle: 'REQUESTED',
+    });
+    expect(sceneIndexStore.get('replacement-scene')).toMatchObject({
+      whisparrMovieId: 22,
+      whisparrHasFile: true,
+    });
+  });
+
+  it('retains upstream observations when the complete movie snapshot fails', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({ whisparrMovieId: 22, whisparrHasFile: true }),
+      ],
+    });
+    getMovieSnapshotMock.mockRejectedValue(new Error('provider unavailable'));
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await expect(service.syncWhisparrMovies('test', true)).rejects.toThrow(
+      'provider unavailable',
+    );
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      whisparrMovieId: 22,
+      whisparrHasFile: true,
+    });
+  });
+
+  it('does not clear a newly submitted movie when an older snapshot finishes late', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({ requestStatus: RequestStatus.REQUESTED }),
+      ],
+    });
+    getMovieSnapshotMock.mockImplementation(async () => {
+      sceneIndexStore.set(
+        'scene-1',
+        buildSceneIndexRow({
+          requestStatus: RequestStatus.REQUESTED,
+          requestUpdatedAt: new Date(Date.now() + 1000),
+          whisparrMovieId: 99,
+          whisparrHasFile: false,
+          whisparrLastSyncedAt: new Date(Date.now() + 1000),
+          computedLifecycle: 'REQUESTED',
+        }),
+      );
+      return [];
+    });
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.syncWhisparrMovies('test', true);
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      whisparrMovieId: 99,
+      whisparrHasFile: false,
+    });
+  });
+
+  it('refreshes acquisition observations without metadata generation or submission', async () => {
+    const { prisma } = createPrismaMock({});
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    const movies = jest
+      .spyOn(service, 'syncWhisparrMovies')
+      .mockResolvedValue({ processedCount: 1, updatedCount: 1 });
+    const queue = jest
+      .spyOn(service, 'syncWhisparrQueue')
+      .mockResolvedValue({ processedCount: 0, updatedCount: 0 });
+    const stash = jest
+      .spyOn(service, 'syncLibraryProjection')
+      .mockResolvedValue({ processedCount: 1, updatedCount: 1 });
+    const metadata = jest.spyOn(service, 'syncMetadataBackfill');
+    await service.runManualSync('acquisition');
+    expect(movies).toHaveBeenCalledTimes(1);
+    expect(queue).toHaveBeenCalledTimes(1);
+    expect(stash).toHaveBeenCalledTimes(1);
+    expect(metadata).not.toHaveBeenCalled();
+    movies.mockResolvedValue(null);
+    await expect(service.runManualSync('acquisition')).rejects.toThrow(
+      'already running',
+    );
+  });
+
+  it.each(['premature-end', 'empty-page', 'repeated-scene'])(
+    'does not clear library availability after an incomplete Stash snapshot (%s)',
+    async (mode) => {
+      const { prisma, sceneIndexStore, librarySceneIndexStore } =
+        createPrismaMock({
+          sceneIndexRows: [
+            buildSceneIndexRow({
+              stashAvailable: true,
+              computedLifecycle: 'AVAILABLE',
+            }),
+          ],
+          librarySceneIndexRows: [
+            {
+              stashSceneId: 'existing-local',
+              lastSyncedAt: new Date('2026-01-01'),
+            },
+          ],
+        });
+      const base = {
+        total: 1,
+        page: 1,
+        perPage: 100,
+        hasMore: false,
+        items: [],
+      };
+      if (mode === 'premature-end')
+        getLocalLibraryScenePageMock.mockResolvedValue(base);
+      if (mode === 'empty-page')
+        getLocalLibraryScenePageMock.mockResolvedValue({
+          ...base,
+          hasMore: true,
+        });
+      if (mode === 'repeated-scene')
+        getLocalLibraryScenePageMock.mockResolvedValue({
+          ...base,
+          items: [{ id: 'same' }, { id: 'same' }],
+        });
+      const service = new IndexingService(
+        prisma,
+        integrationsService,
+        catalogProviderService,
+        whisparrAdapter,
+        stashAdapter,
+        stashdbAdapter,
+        syncStateService,
+      );
+      await expect(service.syncLibraryProjection('test')).rejects.toThrow(
+        'snapshot',
+      );
+      expect(sceneIndexStore.get('scene-1')).toMatchObject({
+        stashAvailable: true,
+        computedLifecycle: 'AVAILABLE',
+      });
+      expect(librarySceneIndexStore.has('existing-local')).toBe(true);
+    },
+  );
+
   it('bootstraps a fresh request row into the local scene index', async () => {
     const { prisma, sceneIndexStore } = createPrismaMock({
       requestRows: [

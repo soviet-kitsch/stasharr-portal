@@ -493,6 +493,17 @@ export class StashAdapter {
       },
     });
 
+    const reportedCount = payload.data?.findScenes?.count;
+    if (
+      !Array.isArray(payload.data?.findScenes?.scenes) ||
+      typeof reportedCount !== 'number' ||
+      !Number.isInteger(reportedCount) ||
+      reportedCount < 0
+    ) {
+      throw new BadGatewayException(
+        'Stash returned an incomplete library snapshot.',
+      );
+    }
     const scenes = payload.data?.findScenes?.scenes ?? [];
     const total =
       typeof payload.data?.findScenes?.count === 'number'
@@ -1279,7 +1290,9 @@ export class StashAdapter {
 
   private async reportRuntimeSuccess(): Promise<void> {
     try {
-      await this.runtimeHealthService.recordSuccess(RuntimeHealthServiceKey.STASH);
+      await this.runtimeHealthService.recordSuccess(
+        RuntimeHealthServiceKey.STASH,
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to record Stash runtime recovery: ${this.errorMessage(error)}`,

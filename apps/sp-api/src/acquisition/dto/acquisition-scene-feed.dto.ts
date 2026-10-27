@@ -1,5 +1,6 @@
 import { SceneStatusDto } from '../../scene-status/dto/scene-status.dto';
 import { type CatalogProviderKey } from '../../providers/catalog/catalog-provider.util';
+import { AcquisitionReconciliation } from '../acquisition-reconciliation';
 
 export class AcquisitionCountsByLifecycleDto {
   REQUESTED!: number;
@@ -26,6 +27,7 @@ export class AcquisitionSceneItemDto {
   queueState!: string | null;
   errorMessage!: string | null;
   whisparrViewUrl!: string | null;
+  reconciliation!: AcquisitionReconciliation;
 }
 
 export class AcquisitionScenesFeedDto {

@@ -11,6 +11,13 @@ export interface AcquisitionCountsByLifecycle {
 }
 
 export interface AcquisitionSceneItem extends DiscoverItem {
+  reconciliation?: {
+    condition: string;
+    label: string;
+    message: string;
+    needsAttention: boolean;
+    checkedAt: string | null;
+  };
   queueStatus: string | null;
   queueState: string | null;
   errorMessage: string | null;

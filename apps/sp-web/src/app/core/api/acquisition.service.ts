@@ -9,6 +9,10 @@ import { AcquisitionLifecycleFilter, AcquisitionScenesResponse } from './acquisi
 export class AcquisitionService {
   private readonly http = inject(HttpClient);
 
+  refreshStatus(): Observable<unknown> {
+    return this.http.post('/api/indexing/sync', {}, { params: { job: 'acquisition' } });
+  }
+
   getScenesFeed(
     page: number,
     perPage: number,
