@@ -918,6 +918,49 @@ describe('IndexingService', () => {
     },
   );
 
+  it('ignores stale queue details when a newer imported-file observation already exists', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({ whisparrMovieId: 22, whisparrHasFile: false }),
+      ],
+    });
+    getQueueSnapshotMock.mockImplementation(async () => {
+      sceneIndexStore.set(
+        'scene-1',
+        buildSceneIndexRow({
+          whisparrMovieId: 22,
+          whisparrHasFile: true,
+          whisparrLastSyncedAt: new Date(Date.now() + 1000),
+          computedLifecycle: 'IMPORT_PENDING',
+        }),
+      );
+      return [
+        {
+          movieId: 22,
+          status: 'warning',
+          trackedDownloadState: 'Downloading',
+          trackedDownloadStatus: 'Warning',
+          errorMessage: 'Old failure',
+        },
+      ];
+    });
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.syncWhisparrQueue('test', true);
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      whisparrHasFile: true,
+      computedLifecycle: 'IMPORT_PENDING',
+      whisparrQueueStatus: null,
+    });
+  });
+
   it('bootstraps a fresh request row into the local scene index', async () => {
     const { prisma, sceneIndexStore } = createPrismaMock({
       requestRows: [

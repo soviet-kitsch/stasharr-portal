@@ -1768,6 +1768,7 @@ export class IndexingService {
           patch.whisparrLastSyncedAt < existing.requestUpdatedAt))
     ) {
       // A slow snapshot must not erase a newer submission or queue observation.
+      queueItems = undefined;
       patch = {
         ...patch,
         whisparrMovieId: existing.whisparrMovieId,

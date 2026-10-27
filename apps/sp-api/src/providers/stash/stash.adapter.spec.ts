@@ -31,6 +31,28 @@ describe('StashAdapter', () => {
     );
   });
 
+  it.each([
+    {},
+    { findScenes: { scenes: [] } },
+    { findScenes: { count: -1, scenes: [] } },
+    { findScenes: { count: 1 } },
+  ])(
+    'rejects an incomplete library response instead of treating it as an empty library %#',
+    async (data) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data }),
+      } as Response);
+      await expect(
+        adapter.getLocalLibraryScenePage(
+          { baseUrl: 'http://stash.local' },
+          { page: 1, perPage: 100 },
+          'STASHDB',
+        ),
+      ).rejects.toThrow('incomplete library snapshot');
+    },
+  );
+
   it('returns empty list when there are no matching scenes', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
