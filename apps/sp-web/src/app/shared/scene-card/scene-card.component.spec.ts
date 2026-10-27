@@ -59,9 +59,8 @@ describe('SceneCardComponent', () => {
 
     expect(sceneLink?.getAttribute('href')).toContain('/scene/scene-1');
     expect(sceneLink?.getAttribute('href')).toContain('returnTo=%2Fscenes');
-    expect(studioBadgeLink?.getAttribute('href')).toContain('/scenes');
-    expect(studioBadgeLink?.getAttribute('href')).toContain('studios=studio-1');
-    expect(studioBadgeLink?.getAttribute('href')).toContain('studioNames=Studio%20One');
+    expect(studioBadgeLink?.getAttribute('href')).toContain('/studio/studio-1');
+    expect(studioBadgeLink?.getAttribute('href')).toContain('returnTo=%2Fscenes');
     expect(requestButton?.textContent?.trim()).toBe('Request');
 
     requestButton?.click();

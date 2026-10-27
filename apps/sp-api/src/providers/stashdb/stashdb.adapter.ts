@@ -37,6 +37,7 @@ export interface StashdbAdapterSceneFeedConfig extends StashdbAdapterTrendingCon
   favorites?: StashdbSceneFeedFavorites;
   tagFilter?: StashdbSceneTagFilter;
   studioIds?: string[];
+  performerIds?: string[];
 }
 
 export type StashdbSceneFeedFavorites = 'PERFORMER' | 'STUDIO' | 'ALL';
@@ -57,6 +58,7 @@ export type StashdbPerformerSort =
   | 'BIRTHDATE'
   | 'DEATHDATE'
   | 'SCENE_COUNT'
+  | 'POPULARITY'
   | 'CAREER_START_YEAR'
   | 'DEBUT'
   | 'LAST_SCENE'
@@ -80,6 +82,7 @@ export interface StashdbPerformerFeedConfig extends StashdbAdapterBaseConfig {
   sort?: StashdbPerformerSort;
   direction?: StashdbSortDirection;
   favoritesOnly?: boolean;
+  studioId?: string;
 }
 
 export interface StashdbPerformerDetails {
@@ -661,9 +664,12 @@ export class StashdbAdapter {
       inputParts.push('is_favorite: true');
     }
 
+    const studioId = config.studioId?.trim();
+    if (studioId) inputParts.push('studio_id: $studioId');
+    const studioDeclaration = studioId ? ', $studioId: ID!' : '';
     const nameVariableDeclaration = normalizedName ? ', $name: String!' : '';
     const query = `
-      query QueryPerformers($page: Int!, $perPage: Int!${nameVariableDeclaration}) {
+      query QueryPerformers($page: Int!, $perPage: Int!${nameVariableDeclaration}${studioDeclaration}) {
         queryPerformers(input: { ${inputParts.join(', ')} }) {
           count
           performers {
@@ -690,6 +696,7 @@ export class StashdbAdapter {
     if (normalizedName) {
       variables.name = normalizedName;
     }
+    if (studioId) variables.studioId = studioId;
 
     const payload = await this.executeQuery(config, query, variables);
     const total =
@@ -1311,6 +1318,22 @@ export class StashdbAdapter {
       'studioIds' in config && config.studioIds
         ? [...new Set(config.studioIds.map((id) => id.trim()).filter(Boolean))]
         : [];
+    const performerIds =
+      'performerIds' in config
+        ? [
+            ...new Set(
+              (config.performerIds ?? [])
+                .map((id) => id.trim())
+                .filter(Boolean),
+            ),
+          ]
+        : [];
+    const performerDeclaration = performerIds.length
+      ? ', $performerIds: [ID!]!'
+      : '';
+    const performerInput = performerIds.length
+      ? ', performers: { value: $performerIds, modifier: INCLUDES }'
+      : '';
     const tagModifier = tagFilter?.mode === 'AND' ? 'INCLUDES_ALL' : 'INCLUDES';
     const tagVariableDeclaration = tagFilter ? ', $tagIds: [ID!]!' : '';
     const studioVariableDeclaration =
@@ -1324,8 +1347,8 @@ export class StashdbAdapter {
         ? ', studios: { value: $studioIds, modifier: INCLUDES }'
         : '';
     const query = `
-      query QueryScenes($page: Int!, $perPage: Int!${tagVariableDeclaration}${studioVariableDeclaration}) {
-        queryScenes(input: { sort: ${sort}, direction: ${direction}, page: $page, per_page: $perPage${favoritesInput}${tagInput}${studioInput} }) {
+      query QueryScenes($page: Int!, $perPage: Int!${tagVariableDeclaration}${studioVariableDeclaration}${performerDeclaration}) {
+        queryScenes(input: { sort: ${sort}, direction: ${direction}, page: $page, per_page: $perPage${favoritesInput}${tagInput}${studioInput}${performerInput} }) {
           count
           scenes {
             id
@@ -1364,6 +1387,7 @@ export class StashdbAdapter {
     if (tagFilter) {
       variables.tagIds = tagFilter.tagIds;
     }
+    if (performerIds.length) variables.performerIds = performerIds;
     if (studioIds.length > 0) {
       variables.studioIds = studioIds;
     }

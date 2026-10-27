@@ -1,10 +1,5 @@
-import {
-  DiscoverResponseDto,
-} from '../discover/dto/discover-item.dto';
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import { DiscoverResponseDto } from '../discover/dto/discover-item.dto';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { StashdbAdapter } from '../providers/stashdb/stashdb.adapter';
 import { withStashImageSize } from '../providers/stashdb/stashdb-image-url.util';
@@ -27,8 +22,10 @@ export class PerformersService {
   private static readonly DEFAULT_PAGE = 1;
   private static readonly DEFAULT_PER_PAGE = 24;
   private static readonly DEFAULT_SCENES_PER_PAGE = 24;
-  private static readonly DEFAULT_PERFORMERS_SORT_DIRECTION: PerformerSortDirection = 'ASC';
-  private static readonly DEFAULT_SCENES_SORT_DIRECTION: PerformerScenesSortDirection = 'DESC';
+  private static readonly DEFAULT_PERFORMERS_SORT_DIRECTION: PerformerSortDirection =
+    'ASC';
+  private static readonly DEFAULT_SCENES_SORT_DIRECTION: PerformerScenesSortDirection =
+    'DESC';
 
   constructor(
     private readonly catalogProviderService: CatalogProviderService,
@@ -45,6 +42,7 @@ export class PerformersService {
       sort?: PerformerSort;
       direction?: PerformerSortDirection;
       favoritesOnly?: boolean;
+      studioId?: string;
     },
   ): Promise<PerformerFeedResponseDto> {
     const catalogProvider =
@@ -59,8 +57,10 @@ export class PerformersService {
       gender: filters?.gender,
       sort: filters?.sort ?? 'NAME',
       direction:
-        filters?.direction ?? PerformersService.DEFAULT_PERFORMERS_SORT_DIRECTION,
+        filters?.direction ??
+        PerformersService.DEFAULT_PERFORMERS_SORT_DIRECTION,
       favoritesOnly: filters?.favoritesOnly === true,
+      studioId: filters?.studioId?.trim() || undefined,
     });
 
     const hasMore = page * perPage < performers.total;
@@ -152,7 +152,8 @@ export class PerformersService {
       page,
       perPage,
       sort: filters?.sort ?? 'DATE',
-      direction: filters?.direction ?? PerformersService.DEFAULT_SCENES_SORT_DIRECTION,
+      direction:
+        filters?.direction ?? PerformersService.DEFAULT_SCENES_SORT_DIRECTION,
       studioIds: this.normalizeIds(filters?.studioIds ?? []),
       tagIds: this.normalizeIds(filters?.tagIds ?? []),
       onlyFavoriteStudios: filters?.onlyFavoriteStudios === true,
@@ -227,6 +228,8 @@ export class PerformersService {
   }
 
   private normalizeIds(ids: string[]): string[] {
-    return [...new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0))];
+    return [
+      ...new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)),
+    ];
   }
 }

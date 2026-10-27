@@ -8,6 +8,17 @@
   </header>
 
   <section class="controls-shell" aria-label="Performers controls">
+    <div class="controls-header">
+      <span>Catalog Discovery</span>
+      <button
+        type="button"
+        class="reset-filters-button"
+        [disabled]="!hasActiveFilters()"
+        (click)="resetFilters()"
+      >
+        Clear Filters
+      </button>
+    </div>
     <div class="controls-row">
       <label class="control-field">
         <span>Filter Performer Name</span>
@@ -18,6 +29,42 @@
           placeholder="Search performer name"
           (ngModelChange)="onNameFilterChanged($event)"
         />
+      </label>
+
+      <label class="control-field studio-field">
+        <span>Studio Filter</span>
+        <p-select
+          inputId="performers-studios"
+          [ngModel]="selectedStudioId()"
+          (ngModelChange)="onStudioSelectionChanged($event)"
+          (onFilter)="onStudioFilterChanged($event.filter)"
+          (onPanelHide)="onStudioFilterChanged('')"
+          [filter]="true"
+          [filterValue]="studioSearchTerm()"
+          filterPlaceHolder="Search studios"
+          [loading]="studioSearchLoading()"
+          [fluid]="true"
+          [options]="studioSelectOptions()"
+          [group]="true"
+          optionGroupLabel="label"
+          optionGroupChildren="items"
+          optionLabel="label"
+          optionValue="value"
+          [showClear]="true"
+          [emptyMessage]="studioSelectEmptyMessage()"
+          [emptyFilterMessage]="studioSelectEmptyMessage()"
+          [resetFilterOnHide]="true"
+          [appendTo]="'body'"
+          panelStyleClass="app-overlay-panel"
+          placeholder="Any studio"
+          scrollHeight="16rem"
+        />
+        <small class="filter-note"
+          >Matches the selected studio only; choose a child studio separately.</small
+        >
+        @if (studioSearchError()) {
+          <small class="error" role="status">{{ studioSearchError() }}</small>
+        }
       </label>
 
       <label class="control-field">
@@ -73,6 +120,9 @@
         </div>
       </label>
     </div>
+    @if (selectedSort() === 'POPULARITY') {
+      <p class="filter-note popularity-note">Based on community fingerprint submissions.</p>
+    }
   </section>
 
   @if (loading()) {
@@ -114,7 +164,12 @@
           </button>
 
           @if (item.cardImageUrl || item.imageUrl) {
-            <img class="performer-image" [src]="item.cardImageUrl ?? item.imageUrl" [alt]="item.name" loading="lazy" />
+            <img
+              class="performer-image"
+              [src]="item.cardImageUrl ?? item.imageUrl"
+              [alt]="item.name"
+              loading="lazy"
+            />
           } @else {
             <div class="performer-image placeholder" aria-hidden="true">
               {{ performerInitial(item.name) }}
@@ -142,7 +197,9 @@
 
     @if (loadMoreError()) {
       <div class="load-more-error">
-        <p-message severity="error" styleClass="app-inline-message">{{ loadMoreError() }}</p-message>
+        <p-message severity="error" styleClass="app-inline-message">{{
+          loadMoreError()
+        }}</p-message>
         <button pButton type="button" class="retry-button" (click)="retryLoadMore()">Retry</button>
       </div>
     }

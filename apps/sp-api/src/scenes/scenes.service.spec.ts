@@ -249,7 +249,9 @@ describe('ScenesService', () => {
     await expect(service.getScenesFeed()).resolves.toMatchObject({
       items: [expect.objectContaining({ source: 'FANSDB' })],
     });
-    await expect(service.getSceneById('stashdb-scene-1')).resolves.toMatchObject({
+    await expect(
+      service.getSceneById('stashdb-scene-1'),
+    ).resolves.toMatchObject({
       source: 'FANSDB',
     });
 
@@ -541,6 +543,26 @@ describe('ScenesService', () => {
         baseUrl: stashdbIntegration.baseUrl,
         apiKey: stashdbIntegration.apiKey,
       },
+    );
+  });
+  it('normalizes performers and combines them with studio criteria', async () => {
+    await service.getScenesFeed(
+      2,
+      24,
+      'DATE',
+      'DESC',
+      [],
+      'OR',
+      undefined,
+      ['studio-1'],
+      [' p-1 ', 'p-1', 'p-2'],
+    );
+    expect(stashdbAdapter.getScenesBySort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 2,
+        performerIds: ['p-1', 'p-2'],
+        studioIds: ['studio-1'],
+      }),
     );
   });
 });

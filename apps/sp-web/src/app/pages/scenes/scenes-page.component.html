@@ -45,6 +45,14 @@
 
     <div class="controls-row">
       <label class="control-field">
+        <span>Performers in Scene</span>
+        <app-performer-picker
+          [selected]="selectedPerformers()"
+          (selectionChange)="onPerformersChanged($event)"
+        />
+        <small>Matches any selected performer.</small>
+      </label>
+      <label class="control-field">
         <span>Studio Filter</span>
         <div class="studio-picker-shell">
           <p-multiselect

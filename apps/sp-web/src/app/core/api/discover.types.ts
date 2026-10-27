@@ -199,6 +199,7 @@ export type PerformerSort =
   | 'NAME'
   | 'BIRTHDATE'
   | 'SCENE_COUNT'
+  | 'POPULARITY'
   | 'CAREER_START_YEAR'
   | 'DEBUT'
   | 'LAST_SCENE'

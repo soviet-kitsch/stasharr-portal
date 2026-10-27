@@ -108,4 +108,14 @@ describe('ScenePageComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Request in Whisparr');
   });
+  it('opens the studio logo and name inside Portal even when a public studio URL exists', async () => {
+    const { fixture } = await renderScene(buildScene());
+    const logo = fixture.nativeElement.querySelector('a.studio-logo-overlay');
+    expect(logo?.getAttribute('href')).toContain('/studio/studio-1');
+    expect(logo?.getAttribute('target')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.meta-row a')?.getAttribute('href')).toContain(
+      '/studio/studio-1',
+    );
+    expect(logo?.getAttribute('href')).not.toContain('studio.local');
+  });
 });

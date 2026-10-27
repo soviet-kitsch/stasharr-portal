@@ -185,7 +185,7 @@ describe('ScenesPageComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    return { fixture, discoverService, navigateSpy, runtimeHealthService };
+    return { fixture, discoverService, navigateSpy, runtimeHealthService, queryParamMap$ };
   }
 
   it('initializes the canonical scenes discovery view with TRENDING sort', async () => {
@@ -203,6 +203,7 @@ describe('ScenesPageComponent', () => {
       [],
       'OR',
       undefined,
+      [],
       [],
     );
     expect(navigateSpy).not.toHaveBeenCalled();
@@ -266,6 +267,7 @@ describe('ScenesPageComponent', () => {
       'OR',
       undefined,
       [],
+      [],
     );
     expect(navigateSpy).toHaveBeenCalledWith([], {
       relativeTo: expect.anything(),
@@ -283,6 +285,8 @@ describe('ScenesPageComponent', () => {
         tagNames: null,
         studios: null,
         studioNames: null,
+        performers: null,
+        performerNames: null,
       },
       queryParamsHandling: 'merge',
       replaceUrl: false,
@@ -306,6 +310,7 @@ describe('ScenesPageComponent', () => {
       'OR',
       undefined,
       [],
+      [],
     );
     expect(navigateSpy).toHaveBeenCalledWith([], {
       relativeTo: expect.anything(),
@@ -323,6 +328,8 @@ describe('ScenesPageComponent', () => {
         tagNames: null,
         studios: null,
         studioNames: null,
+        performers: null,
+        performerNames: null,
       },
       queryParamsHandling: 'merge',
       replaceUrl: true,
@@ -368,5 +375,44 @@ describe('ScenesPageComponent', () => {
     expect(alert?.textContent).toContain('Catalog discovery needs attention');
     expect(fixture.nativeElement.textContent).toContain('Repair integrations');
     expect(repairLink).toBeTruthy();
+  });
+  it('hydrates performer chips and combines performer criteria with the studio filter', async () => {
+    const { fixture, discoverService } = await renderPage({
+      performers: 'p-1,p-1,p-2',
+      performerNames: JSON.stringify(['Example, Alias', 'Duplicate', 'Second']),
+      studios: 'studio-1',
+    });
+    expect((fixture.componentInstance as any).selectedPerformers()).toEqual([
+      { id: 'p-1', name: 'Example, Alias' },
+      { id: 'p-2', name: 'Second' },
+    ]);
+    expect(discoverService.getScenesFeed).toHaveBeenLastCalledWith(
+      1,
+      24,
+      'TRENDING',
+      'DESC',
+      [],
+      'OR',
+      undefined,
+      ['studio-1'],
+      ['p-1', 'p-2'],
+    );
+  });
+
+  it('roundtrips labels with commas, clears performers, and restores a browser Back filter', async () => {
+    const { fixture, discoverService, navigateSpy, queryParamMap$ } = await renderPage();
+    const component = fixture.componentInstance as any;
+    component.onPerformersChanged([{ id: 'p-1', name: 'Example, Alias' }]);
+    expect(navigateSpy.mock.lastCall?.[1]?.queryParams).toMatchObject({
+      performers: 'p-1',
+      performerNames: '["Example, Alias"]',
+    });
+    component.resetFilters();
+    expect(component.selectedPerformers()).toEqual([]);
+    queryParamMap$.next(
+      convertToParamMap({ performers: 'p-2', performerNames: '["Back result"]' }),
+    );
+    expect(component.selectedPerformers()).toEqual([{ id: 'p-2', name: 'Back result' }]);
+    expect(discoverService.getScenesFeed.mock.lastCall?.[8]).toEqual(['p-2']);
   });
 });

@@ -15,6 +15,7 @@ export const PERFORMER_SORT_VALUES = [
   'BIRTHDATE',
   'DEATHDATE',
   'SCENE_COUNT',
+  'POPULARITY',
   'CAREER_START_YEAR',
   'DEBUT',
   'LAST_SCENE',
@@ -56,6 +57,12 @@ export class PerformersQueryDto {
   name?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(100)
+  studioId?: string;
+
+  @IsOptional()
   @IsIn(PERFORMER_GENDER_VALUES)
   gender?: PerformerGender;
 
@@ -91,5 +98,4 @@ export class PerformersQueryDto {
   })
   @IsBoolean()
   favoritesOnly?: boolean;
-
 }

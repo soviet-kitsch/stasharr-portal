@@ -39,6 +39,7 @@ export class DiscoverService {
     tagMode?: SceneTagMatchMode,
     favorites?: SceneFavoritesFilter,
     studioIds?: string[],
+    performerIds?: string[],
   ): Observable<ScenesFeedResponse> {
     let params = new HttpParams().set('page', page.toString()).set('perPage', perPage.toString());
 
@@ -61,6 +62,7 @@ export class DiscoverService {
       params = params.set('studioIds', studioIds.join(','));
     }
 
+    if (performerIds?.length) params = params.set('performerIds', performerIds.join(','));
     return this.http.get<ScenesFeedResponse>('/api/scenes', { params });
   }
 
@@ -99,6 +101,7 @@ export class DiscoverService {
       sort?: PerformerSort;
       direction?: SortDirection;
       favoritesOnly?: boolean;
+      studioId?: string;
     },
   ): Observable<PerformerFeedResponse> {
     let params = new HttpParams().set('page', page.toString()).set('perPage', perPage.toString());
@@ -118,6 +121,7 @@ export class DiscoverService {
     if (filters?.favoritesOnly) {
       params = params.set('favoritesOnly', 'true');
     }
+    if (filters?.studioId) params = params.set('studioId', filters.studioId);
     return this.http.get<PerformerFeedResponse>('/api/performers', { params });
   }
 

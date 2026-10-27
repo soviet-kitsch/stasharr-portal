@@ -49,6 +49,7 @@ export class ScenesService {
     tagMode: SceneTagMatchMode = 'OR',
     favorites?: SceneFavoritesFilter,
     studioIds: string[] = [],
+    performerIds: string[] = [],
   ): Promise<ScenesFeedResponseDto> {
     const catalogProvider =
       await this.catalogProviderService.getConfiguredCatalogProvider();
@@ -63,6 +64,9 @@ export class ScenesService {
       direction,
       favorites,
       studioIds: normalizedStudioIds,
+      ...(performerIds.length
+        ? { performerIds: this.normalizeTagIds(performerIds) }
+        : {}),
       tagFilter:
         normalizedTagIds.length > 0
           ? {
@@ -165,14 +169,10 @@ export class ScenesService {
 
     const catalogProvider =
       await this.catalogProviderService.getConfiguredCatalogProvider();
-    return this.stashdbAdapter.favoriteStudio(
-      normalizedStudioId,
-      favorite,
-      {
-        baseUrl: catalogProvider.baseUrl,
-        apiKey: catalogProvider.apiKey,
-      },
-    );
+    return this.stashdbAdapter.favoriteStudio(normalizedStudioId, favorite, {
+      baseUrl: catalogProvider.baseUrl,
+      apiKey: catalogProvider.apiKey,
+    });
   }
 
   private async resolveStashAvailability(

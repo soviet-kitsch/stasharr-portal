@@ -136,10 +136,10 @@ export class ScenePageComponent implements OnInit, OnDestroy {
   protected studioLogoAriaLabel(scene: SceneDetails): string {
     const studioName = scene.studio?.trim();
     if (studioName) {
-      return `Open ${studioName} in a new tab`;
+      return `View ${studioName} in Portal`;
     }
 
-    return 'Open studio in a new tab';
+    return 'View studio in Portal';
   }
 
   protected formattedDuration(durationSeconds: number | null): string | null {

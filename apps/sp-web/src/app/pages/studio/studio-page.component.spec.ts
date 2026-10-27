@@ -115,11 +115,14 @@ describe('StudioPageComponent', () => {
     const { fixture } = await renderPage();
     const component = fixture.componentInstance as any;
     const cards = fixture.nativeElement.querySelectorAll('app-scene-card');
-    const requestButton = fixture.nativeElement.querySelector('.request-cta') as
-      | HTMLButtonElement
-      | null;
+    const requestButton = fixture.nativeElement.querySelector(
+      '.request-cta',
+    ) as HTMLButtonElement | null;
 
     expect(cards).toHaveLength(1);
+    const performerLink = fixture.nativeElement.querySelector('a[href^="/performers"]');
+    expect(performerLink?.getAttribute('href')).toContain('studio=studio-1');
+    expect(performerLink?.getAttribute('href')).toContain('studioName=Studio%20One');
     expect(component.requestModalOpen()).toBe(false);
 
     requestButton?.click();

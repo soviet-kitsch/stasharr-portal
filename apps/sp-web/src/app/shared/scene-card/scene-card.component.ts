@@ -87,22 +87,25 @@ export class SceneCardComponent {
   }
 
   protected studioBadgeLink(): SceneCardShellLink | null {
-    if (
-      this.studioBadgeRoute === 'none' ||
-      !this.item.studioId ||
-      !this.item.studio
-    ) {
+    if (this.studioBadgeRoute === 'none' || !this.item.studioId || !this.item.studio) {
       return null;
     }
 
     return {
       kind: 'router',
-      commands: [this.studioBadgeRoute === 'library' ? '/library' : '/scenes'],
-      queryParams: {
-        studios: this.item.studioId,
-        studioNames: this.item.studio,
-      },
-      ariaLabel: `Filter ${this.studioBadgeRoute} by studio ${this.item.studio}`,
+      commands:
+        this.studioBadgeRoute === 'library' ? ['/library'] : ['/studio', this.item.studioId],
+      queryParams:
+        this.studioBadgeRoute === 'library'
+          ? {
+              studios: this.item.studioId,
+              studioNames: this.item.studio,
+            }
+          : { returnTo: this.sceneQueryParams?.['returnTo'] ?? '/scenes' },
+      ariaLabel:
+        this.studioBadgeRoute === 'library'
+          ? `Filter library by studio ${this.item.studio}`
+          : `View studio ${this.item.studio}`,
     };
   }
 

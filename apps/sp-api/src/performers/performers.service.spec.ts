@@ -320,13 +320,25 @@ describe('PerformersService', () => {
       alreadyFavorited: false,
     });
 
-    expect(stashdbAdapter.favoritePerformer).toHaveBeenCalledWith(
-      'p-1',
-      true,
-      {
-        baseUrl: stashdbIntegration.baseUrl,
-        apiKey: stashdbIntegration.apiKey,
-      },
+    expect(stashdbAdapter.favoritePerformer).toHaveBeenCalledWith('p-1', true, {
+      baseUrl: stashdbIntegration.baseUrl,
+      apiKey: stashdbIntegration.apiKey,
+    });
+  });
+  it('forwards exact studio membership and native popularity without page-local filtering', async () => {
+    await service.getPerformersFeed(2, 24, {
+      studioId: ' studio-1 ',
+      sort: 'POPULARITY',
+      direction: 'DESC',
+    });
+    expect(stashdbAdapter.getPerformersFeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studioId: 'studio-1',
+        sort: 'POPULARITY',
+        direction: 'DESC',
+        page: 2,
+        perPage: 24,
+      }),
     );
   });
 });

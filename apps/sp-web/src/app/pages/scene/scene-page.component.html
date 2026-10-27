@@ -33,12 +33,11 @@
       @if (scene.studioImageUrl || scene.studioId) {
         <div class="studio-affordance-cluster">
           @if (scene.studioImageUrl) {
-            @if (scene.studioUrl) {
+            @if (scene.studioId) {
               <a
                 class="studio-logo-overlay"
-                [href]="scene.studioUrl"
-                target="_blank"
-                rel="noopener noreferrer"
+                [routerLink]="['/studio', scene.studioId]"
+                [queryParams]="{ returnTo: currentRouteUrl() }"
                 [attr.aria-label]="studioLogoAriaLabel(scene)"
               >
                 <img [src]="scene.studioImageUrl" alt="" />
@@ -90,6 +89,14 @@
           }
 
           <div class="meta-row">
+            @if (scene.studioId) {
+              <a
+                class="meta-chip"
+                [routerLink]="['/studio', scene.studioId]"
+                [queryParams]="{ returnTo: currentRouteUrl() }"
+                >{{ scene.studio ?? 'Studio' }}</a
+              >
+            }
             @if (formattedDuration(scene.duration); as duration) {
               <span class="meta-chip">{{ duration }}</span>
             }

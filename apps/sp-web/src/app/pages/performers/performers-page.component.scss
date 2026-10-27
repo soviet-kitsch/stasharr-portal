@@ -40,7 +40,7 @@ header p {
 
 .controls-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
   align-items: start;
 }
@@ -272,4 +272,43 @@ header p {
   .performer-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
+}
+
+.controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.reset-filters-button {
+  padding: 0.35rem 0.65rem;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.reset-filters-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.reset-filters-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.filter-note {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.popularity-note {
+  grid-column: 1 / -1;
 }

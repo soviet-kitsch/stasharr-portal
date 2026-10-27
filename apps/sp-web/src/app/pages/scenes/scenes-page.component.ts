@@ -49,6 +49,11 @@ import {
   initialIndexingGuidance,
 } from '../../shared/readiness/first-run-readiness.utils';
 
+import {
+  PerformerPickerComponent,
+  PerformerSelection,
+} from '../../shared/performer-picker/performer-picker.component';
+
 type FavoritesFilterOption = 'NONE' | SceneFavoritesFilter;
 interface MultiSelectOption {
   label: string;
@@ -74,6 +79,7 @@ interface SelectedStudioChip {
     Select,
     MultiSelect,
     RouterLink,
+    PerformerPickerComponent,
     SceneCardComponent,
     SceneRequestModalComponent,
   ],
@@ -167,6 +173,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly selectedFavorites = signal<FavoritesFilterOption>(
     ScenesPageComponent.DEFAULT_FAVORITES,
   );
+  protected readonly selectedPerformers = signal<PerformerSelection[]>([]);
   protected readonly tagSearchTerm = signal('');
   protected readonly selectedTagMode = signal<SceneTagMatchMode>(
     ScenesPageComponent.DEFAULT_TAG_MODE,
@@ -319,7 +326,8 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedFavorites() !== ScenesPageComponent.DEFAULT_FAVORITES ||
       this.selectedTagMode() !== ScenesPageComponent.DEFAULT_TAG_MODE ||
       this.selectedTags().length > 0 ||
-      this.selectedStudios().length > 0
+      this.selectedStudios().length > 0 ||
+      this.selectedPerformers().length > 0
     );
   }
 
@@ -332,6 +340,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.selectedDirection.set(ScenesPageComponent.DEFAULT_DIRECTION);
     this.selectedFavorites.set(ScenesPageComponent.DEFAULT_FAVORITES);
     this.selectedTagMode.set(ScenesPageComponent.DEFAULT_TAG_MODE);
+    this.selectedPerformers.set([]);
     this.selectedTags.set([]);
     this.selectedTagIdsModel.set([]);
     this.tagSearchTerm.set('');
@@ -346,6 +355,20 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.studioSearchError.set(null);
     this.tagSearchTerms.next('');
     this.studioSearchTerms.next('');
+    this.syncUrlWithCurrentFilters(false);
+    this.resetFeedAndReload();
+  }
+
+  protected onPerformersChanged(selection: PerformerSelection[]): void {
+    const next = selection.slice(0, 20);
+    if (
+      this.areStringArraysEqual(
+        this.selectedPerformers().map((p) => p.id),
+        next.map((p) => p.id),
+      )
+    )
+      return;
+    this.selectedPerformers.set(next);
     this.syncUrlWithCurrentFilters(false);
     this.resetFeedAndReload();
   }
@@ -542,6 +565,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
         this.selectedTagMode(),
         this.selectedFavoritesFilter(),
         this.selectedStudioIds(),
+        this.selectedPerformers().map((performer) => performer.id),
       )
       .pipe(
         finalize(() => {
@@ -668,6 +692,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     tagNamesById: Map<string, string>;
     studioIds: string[];
     studioNamesById: Map<string, string>;
+    performers: PerformerSelection[];
   } {
     const sortParam = queryParamMap.get('sort');
     const sort: SceneFeedSort =
@@ -729,6 +754,25 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
     const studioIds = this.dedupeStrings(rawStudioIds);
+    const rawPerformerIds = (queryParamMap.get('performers') ?? '')
+      .split(',')
+      .map((id) => id.trim());
+    let performerNames: unknown = [];
+    try {
+      performerNames = JSON.parse(queryParamMap.get('performerNames') ?? '[]');
+    } catch {}
+    const performersById = new Map<string, PerformerSelection>();
+    rawPerformerIds.forEach((id, index) => {
+      if (!id || performersById.has(id) || performersById.size >= 20) return;
+      performersById.set(id, {
+        id,
+        name:
+          Array.isArray(performerNames) && typeof performerNames[index] === 'string'
+            ? performerNames[index]
+            : id,
+      });
+    });
+    const performers = [...performersById.values()];
 
     return {
       sort,
@@ -739,6 +783,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       tagNamesById,
       studioIds,
       studioNamesById,
+      performers,
     };
   }
 
@@ -751,6 +796,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     tagNamesById: Map<string, string>;
     studioIds: string[];
     studioNamesById: Map<string, string>;
+    performers: PerformerSelection[];
   }): boolean {
     const currentSelectedIds = this.selectedTagIds();
     const currentSelectedStudioIds = this.selectedStudioIds();
@@ -762,12 +808,14 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedFavorites() !== state.favorites ||
       this.selectedTagMode() !== state.mode ||
       tagsChanged ||
-      studiosChanged;
+      studiosChanged ||
+      JSON.stringify(this.selectedPerformers()) !== JSON.stringify(state.performers);
 
     if (!changed) {
       return false;
     }
 
+    this.selectedPerformers.set(state.performers);
     this.selectedSort.set(state.sort);
     this.selectedDirection.set(state.direction);
     this.selectedFavorites.set(state.favorites);
@@ -812,6 +860,14 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private syncUrlWithCurrentFilters(replaceUrl: boolean): void {
     const next = {
+      performers: this.selectedPerformers().length
+        ? this.selectedPerformers()
+            .map((p) => p.id)
+            .join(',')
+        : null,
+      performerNames: this.selectedPerformers().length
+        ? JSON.stringify(this.selectedPerformers().map((p) => p.name))
+        : null,
       sort: this.selectedSort() === ScenesPageComponent.DEFAULT_SORT ? null : this.selectedSort(),
       dir:
         this.selectedDirection() === ScenesPageComponent.DEFAULT_DIRECTION
@@ -861,6 +917,8 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const currentStudios = current.get('studios');
     const currentStudioNames = current.get('studioNames');
     if (
+      (current.get('performers') ?? null) === next.performers &&
+      (current.get('performerNames') ?? null) === next.performerNames &&
       (currentSort ?? null) === next.sort &&
       (currentDir ?? null) === next.dir &&
       (currentFav ?? null) === next.fav &&

@@ -16,6 +16,10 @@ import {
   debounceTime,
   distinctUntilChanged,
   finalize,
+  catchError,
+  of,
+  switchMap,
+  timer,
 } from 'rxjs';
 import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
@@ -30,10 +34,27 @@ import {
   PerformerFeedItem,
   PerformerGender,
   PerformerSort,
+  PerformerStudioOption,
   SortDirection,
 } from '../../core/api/discover.types';
 
 type GenderOption = PerformerGender | 'NONE';
+interface StudioChip {
+  id: string;
+  label: string;
+}
+interface StudioGroup {
+  label: string;
+  items: Array<{ label: string; value: string }>;
+}
+interface PerformersUrlState {
+  name: string;
+  gender: GenderOption;
+  sort: PerformerSort;
+  direction: SortDirection;
+  favoritesOnly: boolean;
+  studio: StudioChip | null;
+}
 
 @Component({
   selector: 'app-performers-page',
@@ -62,6 +83,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     label: string;
   }> = [
     { value: 'NAME', label: 'Name' },
+    { value: 'POPULARITY', label: 'Popularity (StashDB)' },
     { value: 'BIRTHDATE', label: 'Birthdate' },
     { value: 'SCENE_COUNT', label: 'Scene Count' },
     { value: 'CAREER_START_YEAR', label: 'Career Start Year' },
@@ -90,6 +112,8 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly nameFilterTerms = new Subject<string>();
+  private readonly studioSearchTerms = new Subject<string>();
+  private studioSearchSubscription: Subscription | null = null;
   private nameFilterSubscription: Subscription | null = null;
   private queryParamSubscription: Subscription | null = null;
   private observer: IntersectionObserver | null = null;
@@ -133,12 +157,20 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     PerformersPageComponent.DEFAULT_DIRECTION,
   );
   protected readonly favoritesOnly = signal(false);
+  protected readonly selectedStudio = signal<StudioChip | null>(null);
+  protected readonly selectedStudioId = signal<string | null>(null);
+  protected readonly studioSearchTerm = signal('');
+  protected readonly studioSearchLoading = signal(false);
+  protected readonly studioSearchError = signal<string | null>(null);
+  protected readonly studioOptions = signal<PerformerStudioOption[]>([]);
+  protected readonly studioSelectOptions = signal<StudioGroup[]>([]);
   protected readonly favoriteInFlightById = signal<Record<string, boolean>>({});
   protected readonly sortOptions = PerformersPageComponent.SORT_OPTIONS;
   protected readonly genderOptions = PerformersPageComponent.GENDER_OPTIONS;
 
   ngOnInit(): void {
     this.setupNameFilterDebounce();
+    this.setupStudioSearch();
     this.setupUrlStateSync();
   }
 
@@ -152,6 +184,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     }
     this.observer?.disconnect();
     this.nameFilterSubscription?.unsubscribe();
+    this.studioSearchSubscription?.unsubscribe();
     this.queryParamSubscription?.unsubscribe();
   }
 
@@ -206,6 +239,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
 
   protected onSortChanged(nextValue: string): void {
     if (
+      nextValue === 'POPULARITY' ||
       nextValue === 'NAME' ||
       nextValue === 'BIRTHDATE' ||
       nextValue === 'SCENE_COUNT' ||
@@ -220,6 +254,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
       }
 
       this.selectedSort.set(nextValue);
+      if (nextValue === 'POPULARITY') this.selectedDirection.set('DESC');
       this.syncUrlWithCurrentFilters(false);
       this.resetFeedAndReload();
     }
@@ -265,6 +300,59 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     this.resetFeedAndReload();
   }
 
+  protected hasActiveFilters(): boolean {
+    return (
+      this.nameFilter().trim().length > 0 ||
+      this.selectedGender() !== PerformersPageComponent.DEFAULT_GENDER ||
+      this.selectedSort() !== PerformersPageComponent.DEFAULT_SORT ||
+      this.selectedDirection() !== PerformersPageComponent.DEFAULT_DIRECTION ||
+      this.favoritesOnly() ||
+      this.selectedStudioId() !== null
+    );
+  }
+
+  protected resetFilters(): void {
+    if (!this.hasActiveFilters()) return;
+    this.nameFilter.set('');
+    this.selectedGender.set(PerformersPageComponent.DEFAULT_GENDER);
+    this.selectedSort.set(PerformersPageComponent.DEFAULT_SORT);
+    this.selectedDirection.set(PerformersPageComponent.DEFAULT_DIRECTION);
+    this.favoritesOnly.set(false);
+    this.selectedStudio.set(null);
+    this.selectedStudioId.set(null);
+    this.onStudioFilterChanged('');
+    this.syncUrlWithCurrentFilters(false);
+    this.resetFeedAndReload();
+  }
+
+  protected onStudioFilterChanged(value: string | null | undefined): void {
+    const term = (value ?? '').trimStart();
+    this.studioSearchTerm.set(term);
+    this.studioSearchTerms.next(term.trim());
+  }
+
+  protected studioSelectEmptyMessage(): string {
+    return (
+      this.studioSearchError() ??
+      (this.studioSearchTerm().trim() ? 'No matching studios.' : 'Type to search studio networks.')
+    );
+  }
+
+  protected onStudioSelectionChanged(value: string | null): void {
+    const id = value?.trim() || null;
+    if (id === this.selectedStudioId()) return;
+    let label = this.selectedStudio()?.id === id ? this.selectedStudio()!.label : (id ?? '');
+    for (const studio of this.studioOptions()) {
+      if (studio.id === id) label = studio.name;
+      for (const child of studio.childStudios) if (child.id === id) label = child.name;
+    }
+    this.selectedStudioId.set(id);
+    this.selectedStudio.set(id ? { id, label } : null);
+    this.rebuildStudioOptions();
+    this.syncUrlWithCurrentFilters(false);
+    this.resetFeedAndReload();
+  }
+
   protected performerInitial(name: string): string {
     return name.trim().charAt(0).toUpperCase();
   }
@@ -288,10 +376,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     return this.favoriteInFlightById()[performerId] === true;
   }
 
-  protected togglePerformerFavorite(
-    event: Event,
-    performer: PerformerFeedItem,
-  ): void {
+  protected togglePerformerFavorite(event: Event, performer: PerformerFeedItem): void {
     event.preventDefault();
     event.stopPropagation();
 
@@ -316,9 +401,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
           } else {
             this.items.update((current) =>
               current.map((item) =>
-                item.id === performer.id
-                  ? { ...item, isFavorite: nextFavorite }
-                  : item,
+                item.id === performer.id ? { ...item, isFavorite: nextFavorite } : item,
               ),
             );
           }
@@ -334,9 +417,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
         },
         error: () => {
           this.notifications.error(
-            nextFavorite
-              ? 'Failed to favorite performer'
-              : 'Failed to unfavorite performer',
+            nextFavorite ? 'Failed to favorite performer' : 'Failed to unfavorite performer',
           );
         },
       });
@@ -371,6 +452,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
         sort: this.selectedSort(),
         direction: this.selectedDirection(),
         favoritesOnly: this.favoritesOnly(),
+        studioId: this.selectedStudioId() ?? undefined,
       })
       .pipe(
         finalize(() => {
@@ -446,13 +528,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     });
   }
 
-  private readUrlState(queryParamMap: import('@angular/router').ParamMap): {
-    name: string;
-    gender: GenderOption;
-    sort: PerformerSort;
-    direction: SortDirection;
-    favoritesOnly: boolean;
-  } {
+  private readUrlState(queryParamMap: import('@angular/router').ParamMap): PerformersUrlState {
     const name = (queryParamMap.get('q') ?? '').trim();
 
     const genderParam = queryParamMap.get('gender');
@@ -470,6 +546,7 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
 
     const sortParam = queryParamMap.get('sort');
     const sort: PerformerSort =
+      sortParam === 'POPULARITY' ||
       sortParam === 'NAME' ||
       sortParam === 'BIRTHDATE' ||
       sortParam === 'SCENE_COUNT' ||
@@ -495,22 +572,18 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
       sort,
       direction,
       favoritesOnly,
+      studio: this.readStudioState(queryParamMap),
     };
   }
 
-  private applyUrlState(state: {
-    name: string;
-    gender: GenderOption;
-    sort: PerformerSort;
-    direction: SortDirection;
-    favoritesOnly: boolean;
-  }): boolean {
+  private applyUrlState(state: PerformersUrlState): boolean {
     const changed =
       this.nameFilter() !== state.name ||
       this.selectedGender() !== state.gender ||
       this.selectedSort() !== state.sort ||
       this.selectedDirection() !== state.direction ||
-      this.favoritesOnly() !== state.favoritesOnly;
+      this.favoritesOnly() !== state.favoritesOnly ||
+      JSON.stringify(this.selectedStudio()) !== JSON.stringify(state.studio);
 
     if (!changed) {
       return false;
@@ -521,6 +594,9 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
     this.selectedSort.set(state.sort);
     this.selectedDirection.set(state.direction);
     this.favoritesOnly.set(state.favoritesOnly);
+    this.selectedStudio.set(state.studio);
+    this.selectedStudioId.set(state.studio?.id ?? null);
+    this.rebuildStudioOptions();
     return true;
   }
 
@@ -533,14 +609,14 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
           ? null
           : this.selectedGender(),
       sort:
-        this.selectedSort() === PerformersPageComponent.DEFAULT_SORT
-          ? null
-          : this.selectedSort(),
+        this.selectedSort() === PerformersPageComponent.DEFAULT_SORT ? null : this.selectedSort(),
       dir:
         this.selectedDirection() === PerformersPageComponent.DEFAULT_DIRECTION
           ? null
           : this.selectedDirection(),
       fav: this.favoritesOnly() ? '1' : null,
+      studio: this.selectedStudioId(),
+      studioName: this.selectedStudio()?.label ?? null,
     };
 
     const current = this.route.snapshot.queryParamMap;
@@ -549,7 +625,9 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
       (current.get('gender') ?? null) === next.gender &&
       (current.get('sort') ?? null) === next.sort &&
       (current.get('dir') ?? null) === next.dir &&
-      (current.get('fav') ?? null) === next.fav
+      (current.get('fav') ?? null) === next.fav &&
+      (current.get('studio') ?? null) === next.studio &&
+      (current.get('studioName') ?? null) === next.studioName
     ) {
       return;
     }
@@ -584,13 +662,62 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
 
   private setupNameFilterDebounce(): void {
     this.nameFilterSubscription = this.nameFilterTerms
-      .pipe(
-        debounceTime(PerformersPageComponent.NAME_FILTER_DEBOUNCE_MS),
-        distinctUntilChanged(),
-      )
-      .subscribe(() => {
-        this.resetFeedAndReload();
+      .pipe(debounceTime(PerformersPageComponent.NAME_FILTER_DEBOUNCE_MS), distinctUntilChanged())
+      .subscribe((term) => {
+        if (term.trim() === this.nameFilter().trim()) {
+          this.resetFeedAndReload();
+        }
       });
+  }
+
+  private readStudioState(params: import('@angular/router').ParamMap): StudioChip | null {
+    const id = params.get('studio')?.trim();
+    return id ? { id, label: params.get('studioName')?.trim() || id } : null;
+  }
+
+  private setupStudioSearch(): void {
+    this.studioSearchSubscription = this.studioSearchTerms
+      .pipe(
+        distinctUntilChanged(),
+        switchMap((query) => {
+          this.studioSearchError.set(null);
+          this.studioOptions.set([]);
+          this.rebuildStudioOptions();
+          if (!query) {
+            this.studioSearchLoading.set(false);
+            return of<PerformerStudioOption[]>([]);
+          }
+          this.studioSearchLoading.set(true);
+          return timer(250).pipe(
+            switchMap(() => this.discoverService.searchPerformerStudios(query)),
+            catchError(() => {
+              this.studioSearchError.set('Failed to load studio options. Try searching again.');
+              return of<PerformerStudioOption[]>([]);
+            }),
+            finalize(() => this.studioSearchLoading.set(false)),
+          );
+        }),
+      )
+      .subscribe((options) => {
+        this.studioOptions.set(options);
+        this.rebuildStudioOptions();
+      });
+  }
+
+  private rebuildStudioOptions(): void {
+    const groups = this.studioOptions().map((studio) => ({
+      label: studio.name,
+      items: [
+        { label: studio.name, value: studio.id },
+        ...studio.childStudios.map((child) => ({ label: child.name, value: child.id })),
+      ],
+    }));
+    const seen = new Set(groups.flatMap((group) => group.items.map((item) => item.value)));
+    const selected = this.selectedStudio();
+    if (selected && !seen.has(selected.id)) {
+      groups.unshift({ label: 'Selected', items: [{ label: selected.label, value: selected.id }] });
+    }
+    this.studioSelectOptions.set(groups);
   }
 
   private setupIntersectionObserver(): void {

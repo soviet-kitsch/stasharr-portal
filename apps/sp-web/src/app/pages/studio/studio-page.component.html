@@ -87,6 +87,14 @@
             <p class="aliases">Also known as: {{ studio.aliases.join(', ') }}</p>
           }
 
+          <a
+            class="meta-chip"
+            [routerLink]="['/performers']"
+            [queryParams]="{ studio: studio.id, studioName: studio.name }"
+          >
+            Browse performers at this studio
+          </a>
+
           @if (studio.deleted) {
             <div class="meta-flags">
               <span class="meta-chip warning">Marked Deleted</span>
@@ -139,7 +147,12 @@
                   [attr.aria-label]="'View studio ' + child.name"
                 ></a>
                 @if (child.imageUrl) {
-                  <img class="child-image" [src]="child.imageUrl" [alt]="child.name + ' logo'" loading="lazy" />
+                  <img
+                    class="child-image"
+                    [src]="child.imageUrl"
+                    [alt]="child.name + ' logo'"
+                    loading="lazy"
+                  />
                 } @else {
                   <div class="child-image placeholder" aria-hidden="true">
                     {{ childInitial(child.name) }}
@@ -171,7 +184,9 @@
                   [href]="entry.url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  [attr.aria-label]="'Open ' + (entry.siteName ?? entry.type ?? 'source link') + ' in a new tab'"
+                  [attr.aria-label]="
+                    'Open ' + (entry.siteName ?? entry.type ?? 'source link') + ' in a new tab'
+                  "
                   [title]="entry.siteName ?? entry.type ?? 'Source link'"
                 >
                   @if (entry.siteIcon) {
@@ -194,7 +209,10 @@
       }
     </div>
 
-    <section class="section controls-shell app-section-panel app-control-shell" aria-label="Studio scene filters">
+    <section
+      class="section controls-shell app-section-panel app-control-shell"
+      aria-label="Studio scene filters"
+    >
       <h2>Scenes</h2>
       <div class="controls-row app-control-grid">
         <div class="control-field app-control-field">

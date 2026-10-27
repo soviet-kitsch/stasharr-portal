@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { DiscoverQueryDto } from '../../discover/dto/discover-query.dto';
 
 export const SCENE_FEED_SORT_VALUES = [
@@ -68,6 +75,21 @@ export class ScenesQueryDto extends DiscoverQueryDto {
   @IsArray()
   @IsString({ each: true })
   studioIds?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    (Array.isArray(value) ? value : [value ?? ''])
+      .flatMap((entry) =>
+        typeof entry === 'string' ? entry.split(',') : [entry],
+      )
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : entry))
+      .filter((entry) => entry !== ''),
+  )
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  performerIds?: string[];
 
   @IsOptional()
   @IsIn(SCENE_TAG_MATCH_MODE_VALUES)

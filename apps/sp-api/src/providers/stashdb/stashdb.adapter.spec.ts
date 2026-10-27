@@ -1465,4 +1465,105 @@ describe('StashdbAdapter', () => {
       alreadyFavorited: false,
     });
   });
+  it('applies performer, studio and tag criteria together before provider pagination', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          queryScenes: {
+            count: 71,
+            scenes: [{ id: 'scene-49', title: 'Page three' }],
+          },
+        },
+      }),
+    });
+    const response = await adapter.getScenesBySort({
+      baseUrl: 'http://catalog/graphql',
+      page: 3,
+      perPage: 24,
+      sort: 'DATE',
+      direction: 'DESC',
+      performerIds: [' p-1 ', 'p-1', 'p-2'],
+      studioIds: ['studio-1'],
+      tagFilter: { tagIds: ['tag-1'], mode: 'AND' },
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.query).toContain(
+      'performers: { value: $performerIds, modifier: INCLUDES }',
+    );
+    expect(body.query).toContain(
+      'studios: { value: $studioIds, modifier: INCLUDES }',
+    );
+    expect(body.query).toContain(
+      'tags: { value: $tagIds, modifier: INCLUDES_ALL }',
+    );
+    expect(body.variables).toEqual({
+      page: 3,
+      perPage: 24,
+      performerIds: ['p-1', 'p-2'],
+      studioIds: ['studio-1'],
+      tagIds: ['tag-1'],
+    });
+    expect(response.total).toBe(71);
+    expect(response.scenes.map((s) => s.id)).toEqual(['scene-49']);
+  });
+
+  it('uses native studio membership with global popularity sorting and provider totals', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          queryPerformers: {
+            count: 656,
+            performers: [{ id: 'p-25', name: 'Example', scene_count: 8 }],
+          },
+        },
+      }),
+    });
+    const result = await adapter.getPerformersFeed({
+      baseUrl: 'http://catalog/graphql',
+      page: 2,
+      perPage: 24,
+      studioId: ' studio-1 ',
+      name: ' Example ',
+      gender: 'FEMALE',
+      sort: 'POPULARITY',
+      direction: 'DESC',
+      favoritesOnly: true,
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    for (const input of [
+      'studio_id: $studioId',
+      'sort: POPULARITY',
+      'direction: DESC',
+      'is_favorite: true',
+      'gender: FEMALE',
+      'name: $name',
+    ])
+      expect(body.query).toContain(input);
+    expect(body.variables).toEqual({
+      page: 2,
+      perPage: 24,
+      studioId: 'studio-1',
+      name: 'Example',
+    });
+    expect(result.total).toBe(656);
+    expect(result.performers.map((p) => p.id)).toEqual(['p-25']);
+  });
+
+  it('reports unsupported provider filters as errors instead of unfiltered or empty results', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ errors: [{ message: 'Unknown studio_id' }] }),
+    });
+    await expect(
+      adapter.getPerformersFeed({
+        baseUrl: 'http://catalog/graphql',
+        page: 1,
+        perPage: 24,
+        studioId: 'studio-1',
+      }),
+    ).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
