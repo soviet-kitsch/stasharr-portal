@@ -4,9 +4,7 @@ export type IntegrationStatus = 'NOT_CONFIGURED' | 'CONFIGURED' | 'ERROR';
 export type IntegrationTestStatus = 'CONFIGURED' | 'ERROR';
 export type ReadinessState = 'NOT_SAVED' | 'SAVED' | 'TEST_FAILED' | 'READY';
 
-export function isCatalogProviderType(
-  type: IntegrationType,
-): type is CatalogProviderType {
+export function isCatalogProviderType(type: IntegrationType): type is CatalogProviderType {
   return type === 'STASHDB' || type === 'FANSDB';
 }
 
@@ -29,6 +27,9 @@ export interface IntegrationResponse {
   status: IntegrationStatus;
   name: string | null;
   baseUrl: string | null;
+  browserUrl?: string | null;
+  defaultRootFolderPath?: string | null;
+  defaultQualityProfileId?: number | null;
   hasApiKey: boolean;
   lastHealthyAt: string | null;
   lastErrorAt: string | null;
@@ -44,6 +45,14 @@ export interface UpdateIntegrationPayload {
   name?: string;
   baseUrl?: string;
   apiKey?: string;
+  browserUrl?: string | null;
+  defaultRootFolderPath?: string | null;
+  defaultQualityProfileId?: number | null;
+}
+
+export interface WhisparrDefaultOptions {
+  rootFolders: Array<{ id: number; path: string; accessible: boolean }>;
+  qualityProfiles: Array<{ id: number; name: string }>;
 }
 
 export function hasSavedIntegrationConfig(
@@ -60,19 +69,12 @@ export function hasSavedIntegrationConfig(
     return !!integration.baseUrl?.trim();
   }
 
-  return (
-    !!integration.baseUrl?.trim() ||
-    integration.hasApiKey ||
-    !!integration.name?.trim()
-  );
+  return !!integration.baseUrl?.trim() || integration.hasApiKey || !!integration.name?.trim();
 }
 
 export function isIntegrationReady(
   integration:
-    | Pick<
-        IntegrationResponse,
-        'enabled' | 'status' | 'baseUrl' | 'lastHealthyAt'
-      >
+    | Pick<IntegrationResponse, 'enabled' | 'status' | 'baseUrl' | 'lastHealthyAt'>
     | null
     | undefined,
 ): boolean {
@@ -119,19 +121,17 @@ export function integrationReadinessLabel(state: ReadinessState): string {
 
 export function resolveConfiguredCatalogProviderType(
   integrations: ReadonlyArray<
-    Pick<
-      IntegrationResponse,
-      'type' | 'enabled' | 'status' | 'baseUrl' | 'lastHealthyAt'
-    >
+    Pick<IntegrationResponse, 'type' | 'enabled' | 'status' | 'baseUrl' | 'lastHealthyAt'>
   >,
 ): CatalogProviderType | null {
   const configuredProviders = integrations.filter(
-    (integration): integration is Pick<
+    (
+      integration,
+    ): integration is Pick<
       IntegrationResponse,
       'type' | 'enabled' | 'status' | 'baseUrl' | 'lastHealthyAt'
     > & { type: CatalogProviderType } =>
-      isCatalogProviderType(integration.type) &&
-      isIntegrationReady(integration),
+      isCatalogProviderType(integration.type) && isIntegrationReady(integration),
   );
 
   if (configuredProviders.length === 0) {

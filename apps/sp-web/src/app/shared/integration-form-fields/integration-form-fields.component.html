@@ -5,9 +5,99 @@
   </label>
 
   <label>
-    Base URL
+    API connection URL
     <input pInputText type="text" formControlName="baseUrl" placeholder="http://localhost:9999" />
   </label>
+
+  <label>
+    Browser URL (optional)
+    <input
+      pInputText
+      type="text"
+      formControlName="browserUrl"
+      placeholder="https://media.example/stash"
+    />
+    <small
+      >Address opened on your device. Leave blank to use the API connection URL. Saving this address
+      keeps the current connection and stored API key.</small
+    >
+    @if (form.get('browserUrl')?.invalid) {
+      <small role="alert"
+        >Use an HTTP or HTTPS address without credentials, query parameters or a fragment.</small
+      >
+    }
+  </label>
+
+  @if (showRequestDefaults) {
+    <fieldset>
+      <legend>Portal request defaults</legend>
+      <p>
+        Choose the starting folder and quality profile for new requests. Individual request settings
+        can still be reviewed.
+      </p>
+      <button type="button" [disabled]="loadingDefaultOptions" (click)="loadDefaultOptions.emit()">
+        {{ loadingDefaultOptions ? 'Loading choices...' : 'Load choices from Whisparr' }}
+      </button>
+      @if (defaultOptionsError) {
+        <p role="alert">{{ defaultOptionsError }}</p>
+      }
+      @if (defaultOptions; as options) {
+        <label>
+          Default root folder
+          <select formControlName="defaultRootFolderPath">
+            <option value="">Choose for each request</option>
+            @if (missingDefaultRoot(); as missingRoot) {
+              <option [value]="missingRoot">{{ missingRoot }} (saved, unavailable)</option>
+            }
+            @for (folder of options.rootFolders; track folder.id) {
+              <option [value]="folder.path" [disabled]="!folder.accessible">
+                {{ folder.path }}{{ folder.accessible ? '' : ' (unavailable)' }}
+              </option>
+            }
+          </select>
+        </label>
+        <label>
+          Default quality profile
+          <select formControlName="defaultQualityProfileId">
+            <option value="">Choose for each request</option>
+            @if (missingDefaultProfile(); as missingProfile) {
+              <option [value]="missingProfile">
+                Profile {{ missingProfile }} (saved, unavailable)
+              </option>
+            }
+            @for (profile of options.qualityProfiles; track profile.id) {
+              <option [value]="profile.id">{{ profile.name }}</option>
+            }
+          </select>
+        </label>
+      } @else {
+        <label
+          >Default root folder<input
+            pInputText
+            type="text"
+            formControlName="defaultRootFolderPath"
+            placeholder="/data/library"
+        /></label>
+        <label
+          >Default quality profile ID<input
+            pInputText
+            type="text"
+            inputmode="numeric"
+            formControlName="defaultQualityProfileId"
+            placeholder="Load choices to select by name"
+        /></label>
+      }
+      @if (form.get('defaultRootFolderPath')?.invalid) {
+        <p role="alert">Use an absolute root folder path.</p>
+      }
+      @if (form.get('defaultQualityProfileId')?.invalid) {
+        <p role="alert">Quality profile ID must be a positive whole number.</p>
+      }
+      <small
+        >These defaults are stored in Portal. They do not change Whisparr's own settings.</small
+      >
+    </fieldset>
+  }
 
   <label>
     API Key

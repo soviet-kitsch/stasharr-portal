@@ -276,6 +276,10 @@ model IntegrationConfig {
   baseUrl String?
   apiKey  String?
 
+  browserUrl              String?
+  defaultRootFolderPath   String?
+  defaultQualityProfileId Int?
+
   config Json?
 
   lastHealthyAt    DateTime?

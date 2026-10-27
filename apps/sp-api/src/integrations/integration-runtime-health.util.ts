@@ -1,7 +1,4 @@
-import {
-  IntegrationType,
-  RuntimeHealthServiceKey,
-} from '@prisma/client';
+import { IntegrationType, RuntimeHealthServiceKey } from '@prisma/client';
 
 const INTEGRATION_RUNTIME_HEALTH_SERVICE_MAP: Record<
   IntegrationType,

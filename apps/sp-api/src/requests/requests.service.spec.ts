@@ -77,6 +77,7 @@ describe('RequestsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    findMovieByStashIdMock.mockResolvedValue(null);
 
     service = new RequestsService(
       indexingService,
@@ -159,9 +160,17 @@ describe('RequestsService', () => {
         title: 'Title scene-1',
         studio: 'Studio',
       },
+      requiresSettings: true,
+      defaultSources: {
+        rootFolderPath: 'ONLY_OPTION',
+        qualityProfileId: 'ONLY_OPTION',
+      },
       defaults: {
         monitored: true,
         searchForMovie: true,
+        rootFolderPath: '/media/b',
+        qualityProfileId: 10,
+        tags: [],
       },
       rootFolders: [
         { id: 1, path: '/media/a', accessible: false },
@@ -244,7 +253,8 @@ describe('RequestsService', () => {
       ['scene-1'],
       'request-submitted',
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
+      outcome: 'REQUEST_CREATED',
       accepted: true,
       alreadyExists: false,
       stashId: 'scene-1',
@@ -278,9 +288,10 @@ describe('RequestsService', () => {
     );
     expect(requestImmediateRefreshMock).toHaveBeenCalledWith(
       ['scene-1'],
-      'request-existing-movie',
+      'request-resumed',
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
+      outcome: 'ENTRY_REUSED',
       accepted: true,
       alreadyExists: true,
       stashId: 'scene-1',

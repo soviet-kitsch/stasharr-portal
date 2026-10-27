@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { IntegrationStatus, IntegrationType } from '@prisma/client';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { integrationBrowserBaseUrl } from '../integrations/browser-url.util';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { type CatalogProviderKey } from '../providers/catalog/catalog-provider.util';
 import { StashAdapter } from '../providers/stash/stash.adapter';
@@ -205,6 +206,9 @@ export class ScenesService {
         {
           baseUrl,
           apiKey: integration.apiKey,
+          ...(integration.browserUrl
+            ? { browserUrl: integration.browserUrl }
+            : {}),
         },
         {
           providerKey: activeCatalogProviderKey,
@@ -309,7 +313,10 @@ export class ScenesService {
 
       return {
         exists: true,
-        viewUrl: this.whisparrAdapter.buildSceneViewUrl(baseUrl, movie.movieId),
+        viewUrl: this.whisparrAdapter.buildSceneViewUrl(
+          integrationBrowserBaseUrl(integration) ?? baseUrl,
+          movie.movieId,
+        ),
       };
     } catch {
       return null;

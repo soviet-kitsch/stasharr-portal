@@ -1,4 +1,9 @@
 import {
+  FeedState,
+  FeedStateCache,
+  injectFeedStateMemory,
+} from '../../core/navigation/feed-state-memory';
+import {
   AfterViewInit,
   Component,
   ElementRef,
@@ -11,6 +16,8 @@ import {
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
+import { ImportMatchReviewComponent } from '../../shared/import-match-review/import-match-review.component';
+import { ButtonDirective } from 'primeng/button';
 import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize, Subscription } from 'rxjs';
@@ -57,6 +64,10 @@ interface AcquisitionPageAlert {
   message: string;
 }
 
+type AcquisitionPageFeedState = FeedState<AcquisitionSceneItem> & {
+  countsByLifecycle: AcquisitionCountsByLifecycle;
+};
+
 @Component({
   selector: 'app-acquisition-page',
   imports: [
@@ -66,6 +77,8 @@ interface AcquisitionPageAlert {
     SceneStatusBadgeComponent,
     DatePipe,
     RequestActionsComponent,
+    ImportMatchReviewComponent,
+    ButtonDirective,
     RequestBatchActionsComponent,
   ],
   templateUrl: './acquisition-page.component.html',
@@ -90,6 +103,14 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   private readonly runtimeHealthService = inject(RuntimeHealthService);
   private readonly setupStatusStore = inject(SetupStatusStore);
   private readonly route = inject(ActivatedRoute);
+  private readonly feedStateCache = inject(FeedStateCache);
+  private readonly feedMemory = injectFeedStateMemory<AcquisitionPageFeedState>(() => ({
+    items: this.items(),
+    page: this.page(),
+    total: this.total(),
+    hasMore: this.hasMore(),
+    countsByLifecycle: this.countsByLifecycle(),
+  }));
   private readonly router = inject(Router);
   private queryParamSubscription: Subscription | null = null;
   private observer: IntersectionObserver | null = null;
@@ -124,6 +145,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
 
   protected refreshStatus(): void {
     if (this.refreshing() || this.inFlight()) return;
+    this.feedStateCache.invalidateAll();
     this.refreshing.set(true);
     this.refreshError.set(null);
     this.refreshSubscription = this.acquisitionService
@@ -157,6 +179,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
     );
   }
   protected actionsFinished(): void {
+    this.feedStateCache.invalidateAll();
     this.selectedIds.set([]);
     this.resetFeedAndReload();
   }
@@ -598,7 +621,9 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
       const changed = this.applyUrlState(lifecycle);
 
       if (!this.hasHydratedFromUrl || changed) {
+        const isInitialHydration = !this.hasHydratedFromUrl;
         this.hasHydratedFromUrl = true;
+        if (isInitialHydration && this.restoreSavedFeed()) return;
         this.resetFeedAndReload();
         return;
       }
@@ -645,6 +670,18 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
       queryParamsHandling: 'merge',
       replaceUrl,
     });
+  }
+
+  private restoreSavedFeed(): boolean {
+    const saved = this.feedMemory.restore();
+    if (!saved) return false;
+    this.feedVersion += 1;
+    this.items.set([...saved.items]);
+    this.page.set(saved.page);
+    this.total.set(saved.total);
+    this.hasMore.set(saved.hasMore);
+    this.countsByLifecycle.set(saved.countsByLifecycle);
+    return true;
   }
 
   private resetFeedAndReload(): void {

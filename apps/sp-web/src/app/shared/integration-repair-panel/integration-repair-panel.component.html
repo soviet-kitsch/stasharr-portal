@@ -32,13 +32,18 @@
       [hasStoredApiKey]="hasStoredApiKey"
       [enabledInputId]="enabledInputId"
       [showEnabledToggle]="showEnabledToggle"
+      [showRequestDefaults]="showRequestDefaults"
+      [defaultOptions]="defaultOptions"
+      [loadingDefaultOptions]="loadingDefaultOptions"
+      [defaultOptionsError]="defaultOptionsError"
+      (loadDefaultOptions)="loadDefaultOptions.emit()"
     />
 
     <div class="actions">
       <button
         pButton
         [attr.type]="submitAction === 'primary' ? 'submit' : 'button'"
-        [disabled]="primaryDisabled"
+        [disabled]="primaryDisabled || form.invalid"
         (click)="onPrimaryClick()"
       >
         {{ primaryActionLabel }}
@@ -47,7 +52,7 @@
         pButton
         text
         [attr.type]="submitAction === 'secondary' ? 'submit' : 'button'"
-        [disabled]="secondaryDisabled"
+        [disabled]="secondaryDisabled || form.invalid"
         (click)="onSecondaryClick()"
       >
         {{ secondaryActionLabel }}

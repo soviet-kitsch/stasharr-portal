@@ -7,6 +7,9 @@
       </p>
     </div>
     <button
+      pButton
+      severity="secondary"
+      size="small"
       type="button"
       class="secondary-action"
       [disabled]="refreshing() || inFlight()"
@@ -33,11 +36,31 @@
       </div>
 
       <div class="page-alert-actions app-action-row">
-        <a class="primary-link small" [routerLink]="['/settings/integrations']">
+        <a
+          pButton
+          severity="secondary"
+          size="small"
+          class="primary-link small"
+          [routerLink]="['/settings/integrations']"
+        >
           Repair integrations
         </a>
-        <a class="secondary-link small" [routerLink]="['/settings/indexing']">Open Indexing</a>
-        <a class="secondary-link small" [routerLink]="['/scenes']">Open Scenes</a>
+        <a
+          pButton
+          severity="secondary"
+          size="small"
+          class="secondary-link small"
+          [routerLink]="['/settings/indexing']"
+          >Open Indexing</a
+        >
+        <a
+          pButton
+          severity="secondary"
+          size="small"
+          class="secondary-link small"
+          [routerLink]="['/scenes']"
+          >Open Scenes</a
+        >
       </div>
     </section>
   }
@@ -54,7 +77,16 @@
   } @else if (error()) {
     <section class="state-shell app-state-block">
       <p-message severity="error" styleClass="app-page-message">{{ error() }}</p-message>
-      <button type="button" class="secondary-action" (click)="retryInitialLoad()">Retry</button>
+      <button
+        pButton
+        severity="secondary"
+        size="small"
+        type="button"
+        class="secondary-action"
+        (click)="retryInitialLoad()"
+      >
+        Retry
+      </button>
     </section>
   } @else {
     <section class="summary-shell" aria-label="Acquisition summary">
@@ -88,15 +120,49 @@
 
         <div class="state-actions app-action-row">
           @if (selectedLifecycle() !== 'ANY') {
-            <button type="button" class="secondary-action" (click)="selectLifecycle('ANY')">
+            <button
+              pButton
+              severity="secondary"
+              size="small"
+              type="button"
+              class="secondary-action"
+              (click)="selectLifecycle('ANY')"
+            >
               Show all tracked
             </button>
           }
-          <a class="primary-link" [routerLink]="['/scenes']">Open Scenes</a>
-          <a class="secondary-link" [routerLink]="['/settings/indexing']">Open Indexing</a>
-          <a class="secondary-link" [routerLink]="['/library']">Open Library</a>
+          <a
+            pButton
+            severity="secondary"
+            size="small"
+            class="primary-link"
+            [routerLink]="['/scenes']"
+            >Open Scenes</a
+          >
+          <a
+            pButton
+            severity="secondary"
+            size="small"
+            class="secondary-link"
+            [routerLink]="['/settings/indexing']"
+            >Open Indexing</a
+          >
+          <a
+            pButton
+            severity="secondary"
+            size="small"
+            class="secondary-link"
+            [routerLink]="['/library']"
+            >Open Library</a
+          >
           @if (pageAlert()) {
-            <a class="secondary-link" [routerLink]="['/settings/integrations']">
+            <a
+              pButton
+              severity="secondary"
+              size="small"
+              class="secondary-link"
+              [routerLink]="['/settings/integrations']"
+            >
               Repair integrations
             </a>
           }
@@ -115,7 +181,14 @@
           </div>
 
           @if (selectedLifecycle() !== 'ANY') {
-            <button type="button" class="secondary-action" (click)="selectLifecycle('ANY')">
+            <button
+              pButton
+              severity="secondary"
+              size="small"
+              type="button"
+              class="secondary-action"
+              (click)="selectLifecycle('ANY')"
+            >
               Show all tracked
             </button>
           }
@@ -142,6 +215,9 @@
 
               @if (selectedLifecycle() === 'ANY' && section.totalCount > section.items.length) {
                 <button
+                  pButton
+                  severity="secondary"
+                  size="small"
                   type="button"
                   class="secondary-action compact"
                   (click)="selectLifecycle(section.lifecycle)"
@@ -232,6 +308,12 @@
                     </div>
 
                     <div class="card-actions app-action-row">
+                      @if (
+                        item.reconciliation?.condition === 'WAITING_FOR_STASH_MATCH' ||
+                        item.status.state === 'IMPORT_PENDING'
+                      ) {
+                        <app-import-match-review [sceneId]="item.id" />
+                      }
                       <app-request-actions
                         [sceneId]="item.id"
                         [sceneTitle]="item.title"
@@ -239,6 +321,9 @@
                         (changed)="actionsFinished()"
                       />
                       <a
+                        pButton
+                        severity="secondary"
+                        size="small"
                         class="primary-link small"
                         [routerLink]="['/scene', item.id]"
                         [queryParams]="{ returnTo: currentRouteUrl() }"
@@ -248,6 +333,9 @@
 
                       @if (item.whisparrViewUrl) {
                         <a
+                          pButton
+                          severity="secondary"
+                          size="small"
                           class="secondary-link small"
                           [href]="item.whisparrViewUrl"
                           target="_blank"
@@ -278,7 +366,14 @@
           <p-message severity="error" styleClass="app-inline-message">{{
             loadMoreError()
           }}</p-message>
-          <button type="button" class="secondary-action compact" (click)="retryLoadMore()">
+          <button
+            pButton
+            severity="secondary"
+            size="small"
+            type="button"
+            class="secondary-action compact"
+            (click)="retryLoadMore()"
+          >
             Retry
           </button>
         </div>

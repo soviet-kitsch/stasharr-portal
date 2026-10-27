@@ -25,7 +25,7 @@ export interface PerformerSelection {
     <p-multiselect
       inputId="scenes-performers"
       ariaLabel="Performers in scene"
-      [ngModel]="selected.map(idOf)"
+      [ngModel]="selectedIds()"
       (ngModelChange)="select($event)"
       [options]="options()"
       optionLabel="name"
@@ -59,12 +59,13 @@ export class PerformerPickerComponent implements OnDestroy {
   private current: PerformerSelection[] = [];
   private results: PerformerSelection[] = [];
   private term = '';
-  protected readonly idOf = (item: PerformerSelection) => item.id;
+  protected readonly selectedIds = signal<string[]>([]);
   protected readonly options = signal<PerformerSelection[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   @Input() set selected(value: PerformerSelection[]) {
     this.current = value;
+    this.selectedIds.set(value.map((item) => item.id));
     this.rebuild();
   }
   get selected(): PerformerSelection[] {

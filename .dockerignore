@@ -11,3 +11,16 @@ tmp
 .env
 .env.codex
 infrastructure/compose/.env
+.env.*
+**/.env
+**/.env.*
+.cache
+**/.cache
+.verification
+**/.verification
+.work
+**/.work
+ci-evidence
+image-evidence
+validation-evidence
+**/coverage

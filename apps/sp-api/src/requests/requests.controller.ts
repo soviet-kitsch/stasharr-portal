@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { RequestOptionsDto } from './dto/request-options.dto';
 import { SubmitSceneRequestDto } from './dto/submit-scene-request.dto';
 import { SubmitSceneRequestResponseDto } from './dto/submit-scene-request-response.dto';
+import { ResumeSceneRequestDto } from './dto/resume-scene-request.dto';
 import { RequestsService } from './requests.service';
 import {
   BatchRequestActionDto,
@@ -48,15 +49,16 @@ export class RequestsController {
   }
 
   @Post(':stashId/rerequest')
-  rerequest(@Param('stashId') id: string, @Body() dto: SubmitSceneRequestDto) {
+  rerequest(@Param('stashId') id: string, @Body() dto: ResumeSceneRequestDto) {
     return this.requestsService.submitSceneRequest(id, dto, 'RE_REQUEST');
   }
 
   @Get(':stashId/options')
   getRequestOptions(
     @Param('stashId') stashId: string,
+    @Query('scope') scope?: string,
   ): Promise<RequestOptionsDto> {
-    return this.requestsService.getRequestOptions(stashId);
+    return this.requestsService.getRequestOptions(stashId, scope);
   }
 
   @Post(':stashId')

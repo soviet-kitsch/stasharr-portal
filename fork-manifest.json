@@ -1,0 +1,22 @@
+{
+  "repository": "soviet-kitsch/stasharr-portal",
+  "upstream": "enymawse/stasharr-portal",
+  "upstreamCommit": "1eba04081332011edd662912f1d1486b378ec9dd",
+  "integrations": [
+    {
+      "pullRequest": "https://github.com/enymawse/stasharr-portal/pull/36",
+      "headCommit": "f57d7808629fdca3ed35dc4b4314750ae7bd519b",
+      "method": "ancestor of the custom source; already included"
+    },
+    {
+      "pullRequest": "https://github.com/enymawse/stasharr-portal/pull/34",
+      "headCommit": "155e0c895e3cf46b8c7966ca399e25c22d7c3072",
+      "method": "ported with current discovery filters, request invalidation and authentication isolation"
+    }
+  ],
+  "image": "ghcr.io/soviet-kitsch/stasharr-portal",
+  "immutableTagFormat": "sha-<full 40-character source commit>",
+  "publicationGate": "main CI unit tests, additive migration proof, builds and exact-image runtime smoke must pass",
+  "deployment": "separately reviewed; no automatic media-server deployment",
+  "license": "AGPL-3.0; upstream attribution retained"
+}

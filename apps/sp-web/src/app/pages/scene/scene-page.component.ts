@@ -8,6 +8,10 @@ import { ProgressSpinner } from 'primeng/progressspinner';
 import { Select } from 'primeng/select';
 import { DiscoverService } from '../../core/api/discover.service';
 import { integrationLabel } from '../../core/api/integrations.types';
+import {
+  FeedStateCache,
+  RESTORE_FEED_NAVIGATION_STATE,
+} from '../../core/navigation/feed-state-memory';
 import { AppNotificationsService } from '../../core/notifications/app-notifications.service';
 import {
   SceneDetails,
@@ -18,6 +22,7 @@ import {
 import { SceneRequestModalComponent } from '../../shared/scene-request-modal/scene-request-modal.component';
 import { SceneStatusBadgeComponent } from '../../shared/scene-status-badge/scene-status-badge.component';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
+import { ImportMatchReviewComponent } from '../../shared/import-match-review/import-match-review.component';
 
 interface SceneLifecycleStep {
   system: string;
@@ -38,6 +43,7 @@ interface SceneLifecycleStep {
     SceneStatusBadgeComponent,
     SceneRequestModalComponent,
     RequestActionsComponent,
+    ImportMatchReviewComponent,
   ],
   templateUrl: './scene-page.component.html',
   styleUrl: './scene-page.component.scss',
@@ -47,6 +53,7 @@ export class ScenePageComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly discoverService = inject(DiscoverService);
   private readonly notifications = inject(AppNotificationsService);
+  private readonly feedStateCache = inject(FeedStateCache);
   private previousFocusedElement: HTMLElement | null = null;
   private routeSubscription: Subscription | null = null;
 
@@ -65,6 +72,7 @@ export class ScenePageComponent implements OnInit, OnDestroy {
   protected readonly backLinkPath = signal('/scenes');
   protected readonly backLinkQueryParams = signal<Params>({});
   protected readonly backLinkLabel = signal('Back to Scenes');
+  protected readonly backLinkState = RESTORE_FEED_NAVIGATION_STATE;
 
   ngOnInit(): void {
     this.routeSubscription = combineLatest([
@@ -379,6 +387,9 @@ export class ScenePageComponent implements OnInit, OnDestroy {
   }
 
   protected onRequestSubmitted(stashId: string): void {
+    // This handler also receives removals, restores and resume outcomes. Invalidate
+    // every remembered observation so a Back navigation cannot resurrect a tombstone.
+    this.feedStateCache.invalidateAll();
     this.loadScene(stashId);
   }
 

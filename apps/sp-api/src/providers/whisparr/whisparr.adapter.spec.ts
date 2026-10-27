@@ -31,6 +31,89 @@ describe('WhisparrAdapter', () => {
     );
   });
 
+  it('exposes actual imported file evidence while keeping catalog identity checks', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: 42,
+          stashId: 'scene-1',
+          hasFile: true,
+          path: '/library/root',
+          movieFile: { path: '/library/root/video.mkv', size: 123456 },
+        },
+      ],
+    });
+    await expect(
+      adapter.findMovieByStashId('scene-1', {
+        baseUrl: 'http://whisparr.local',
+      }),
+    ).resolves.toEqual({
+      movieId: 42,
+      stashId: 'scene-1',
+      hasFile: true,
+      filePath: '/library/root/video.mkv',
+      fileSize: 123456,
+    });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: 42,
+          stashId: 'different-scene',
+          hasFile: true,
+          movieFile: { path: '/library/root/video.mkv', size: 123456 },
+        },
+      ],
+    });
+    await expect(
+      adapter.findMovieByStashId('scene-1', {
+        baseUrl: 'http://whisparr.local',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    undefined,
+    { size: -1 },
+    { size: 0 },
+    { size: 1.5 },
+    { size: '123' },
+  ])(
+    'does not invent file evidence from the movie root or invalid size %#',
+    async (movieFile) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => [
+          {
+            id: 42,
+            stashId: 'scene-1',
+            hasFile: true,
+            path: '/library/root',
+            movieFile,
+          },
+        ],
+      });
+      const result = await adapter.findMovieByStashId('scene-1', {
+        baseUrl: 'http://whisparr.local',
+      });
+      expect(result).not.toHaveProperty('filePath');
+      expect(result).not.toHaveProperty('fileSize');
+    },
+  );
+
+  it('builds safe browser links under a reverse proxy prefix', () => {
+    expect(
+      adapter.buildSceneViewUrl('https://media.example/whisparr/', 42),
+    ).toBe('https://media.example/whisparr/movie/42');
+    expect(
+      adapter.buildSceneViewUrl(
+        'http://user:secret@whisparr/prefix?apikey=secret#private',
+        42,
+      ),
+    ).toBe('http://whisparr/prefix/movie/42');
+  });
+
   describe('search commands', () => {
     it('sends the native MoviesSearch command for exactly one existing movie', async () => {
       fetchMock.mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) });

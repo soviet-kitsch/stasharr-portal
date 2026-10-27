@@ -52,8 +52,10 @@ describe('LibraryService', () => {
   const librarySceneIndexFindManyMock = jest.fn();
   const librarySceneIndexAggregateMock = jest.fn();
   const queryRawMock = jest.fn();
+  const integrationConfigFindUniqueMock = jest.fn();
 
   const prismaService = {
+    integrationConfig: { findUnique: integrationConfigFindUniqueMock },
     librarySceneIndex: {
       findMany: librarySceneIndexFindManyMock,
       aggregate: librarySceneIndexAggregateMock,
@@ -65,6 +67,13 @@ describe('LibraryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    integrationConfigFindUniqueMock.mockResolvedValue({
+      type: 'STASH',
+      enabled: true,
+      status: 'CONFIGURED',
+      baseUrl: 'http://stash.local',
+      browserUrl: null,
+    });
     service = new LibraryService(
       prismaService,
       new LibrarySceneQueryService(prismaService),

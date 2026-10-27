@@ -5,14 +5,35 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: portal-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-and-build:
     name: Test And Build
+    outputs:
+      validation-artifact: ${{ format('portal-validation-{0}-{1}', github.sha, github.run_attempt) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --security-opt apparmor=unconfined
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
 
     steps:
       - name: Check out repository
@@ -31,15 +52,27 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          mkdir -p ci-evidence
 
       - name: Generate Prisma client
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sp?schema=public
         run: pnpm exec prisma generate --schema prisma/schema.prisma
 
-      - name: Run tests
-        run: pnpm test
+      - name: Check additive upgrade with synthetic existing data
+        env:
+          CI: "true"
+          PORTAL_CI_UPGRADE_CHECK: isolated
+          CI_UPGRADE_DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/postgres
+        run: node scripts/check-integration-upgrade.mjs
+
+      - name: Run backend tests
+        run: pnpm --filter ./apps/sp-api test --runInBand --json --outputFile=../../ci-evidence/api-tests.json
+
+      - name: Run frontend tests
+        run: pnpm --filter ./apps/sp-web test --reporter=json --outputFile=../../ci-evidence/web-tests.json
 
       - name: Build backend
         run: pnpm --filter ./apps/sp-api build
@@ -47,15 +80,135 @@ jobs:
       - name: Build frontend
         run: pnpm --filter ./apps/sp-web build
 
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-validation-${{ github.sha }}-${{ github.run_attempt }}
+          path: ci-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
   docker-build:
     name: Docker Build
+    outputs:
+      image-artifact: ${{ format('portal-image-{0}-{1}', github.sha, github.run_attempt) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI_NETWORK: portal-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      CI_DB_NAME: portal-db-${{ github.run_id }}-${{ github.run_attempt }}
+      CI_APP_NAME: portal-app-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Build production image
+        id: image
         env:
           DOCKER_BUILDKIT: 1
-        run: docker build --build-arg STASHARR_VERSION=0.0.0-ci -t stasharr-portal:test .
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./.release-please-manifest.json')['.']")-fork.${GITHUB_SHA::12}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          docker build --build-arg "STASHARR_VERSION=$version" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$version" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            -t "stasharr-portal-ci:$GITHUB_SHA" .
+
+      - name: Smoke-test exact image with an isolated database
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create "$CI_NETWORK"
+          docker run -d --name "$CI_DB_NAME" --network "$CI_NETWORK" \
+            --security-opt apparmor=unconfined \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=ci-only-password \
+            -e POSTGRES_DB=portal_ci_smoke postgres:17-alpine
+          ready=false
+          for attempt in $(seq 1 60); do
+            if docker exec "$CI_DB_NAME" pg_isready -U postgres >/dev/null 2>&1; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          docker run -d --name "$CI_APP_NAME" --network "$CI_NETWORK" \
+            --security-opt apparmor=unconfined \
+            -e DATABASE_HOST="$CI_DB_NAME" -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=ci-only-password -e POSTGRES_DB=portal_ci_smoke \
+            "stasharr-portal-ci:$GITHUB_SHA"
+          healthy=false
+          for attempt in $(seq 1 90); do
+            state="$(docker inspect --format '{{.State.Health.Status}}' "$CI_APP_NAME")"
+            if [ "$state" = healthy ]; then healthy=true; break; fi
+            if [ "$state" = unhealthy ]; then break; fi
+            sleep 2
+          done
+          test "$healthy" = true
+          docker exec "$CI_APP_NAME" node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import fs from "node:fs";
+            const root="http://127.0.0.1:3000";
+            for (const route of ["/api/v1/status", "/"]) {
+              assert.equal((await fetch(root+route)).status,200,route);
+            }
+            const auth=await (await fetch(root+"/api/auth/status")).json();
+            assert.equal(auth.authenticated,false);
+            assert.equal(auth.bootstrapRequired,true);
+            assert.equal((await fetch(root+"/api/acquisition/scenes")).status,401);
+            assert.equal(fs.statSync("/var/lib/stasharr/session-secret").mode & 0o777,0o600);
+          '
+          for container in "$CI_APP_NAME" "$CI_DB_NAME"; do
+            docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container" | grep -F 'apparmor=unconfined'
+          done
+
+      - name: Save tested image and build receipt
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.image.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p image-evidence
+          docker save "stasharr-portal-ci:$GITHUB_SHA" | gzip > image-evidence/portal-image.tar.gz
+          image_id="$(docker image inspect --format '{{.Id}}' "stasharr-portal-ci:$GITHUB_SHA")"
+          archive_sha="$(sha256sum image-evidence/portal-image.tar.gz | cut -d ' ' -f 1)"
+          jq -n --arg commit "$GITHUB_SHA" --arg version "$APP_VERSION" --arg image "$image_id" \
+            --arg archive "$archive_sha" \
+            '{sourceCommit:$commit,version:$version,imageId:$image,archiveSha256:$archive,runtimeSmokePassed:true,apparmorUnconfined:true}' \
+            > image-evidence/build-receipt.json
+
+      - name: Retain tested image
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-image-${{ github.sha }}-${{ github.run_attempt }}
+          path: image-evidence/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Show isolated runtime logs on failure
+        if: failure()
+        run: docker logs --tail 100 "$CI_APP_NAME" || true
+
+      - name: Clean up isolated runtime
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f "$CI_APP_NAME" "$CI_DB_NAME" 2>/dev/null || true
+          docker network rm "$CI_NETWORK" 2>/dev/null || true
+
+  publish:
+    name: Publish Tested Main Image
+    needs: [test-and-build, docker-build]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/ghcr-publish.yml
+    with:
+      image-artifact: ${{ needs.docker-build.outputs.image-artifact }}
+      validation-artifact: ${{ needs.test-and-build.outputs.validation-artifact }}

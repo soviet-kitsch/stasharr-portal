@@ -88,6 +88,9 @@ describe('IntegrationsService', () => {
         name: null,
         baseUrl: null,
         apiKey: null,
+        browserUrl: null,
+        defaultRootFolderPath: null,
+        defaultQualityProfileId: null,
         config: Prisma.JsonNull,
         status: IntegrationStatus.NOT_CONFIGURED,
         lastHealthyAt: null,
@@ -100,6 +103,9 @@ describe('IntegrationsService', () => {
         name: null,
         baseUrl: null,
         apiKey: null,
+        browserUrl: null,
+        defaultRootFolderPath: null,
+        defaultQualityProfileId: null,
         config: Prisma.JsonNull,
         status: IntegrationStatus.NOT_CONFIGURED,
         lastHealthyAt: null,
@@ -107,7 +113,9 @@ describe('IntegrationsService', () => {
         lastErrorMessage: null,
       },
     });
-    expect(clearRuntimeHealth).toHaveBeenCalledWith(RuntimeHealthServiceKey.STASH);
+    expect(clearRuntimeHealth).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.STASH,
+    );
   });
 
   it('resets all integrations and returns them sorted by type', async () => {
@@ -177,6 +185,9 @@ describe('IntegrationsService', () => {
         name: null,
         baseUrl: null,
         apiKey: null,
+        browserUrl: null,
+        defaultRootFolderPath: null,
+        defaultQualityProfileId: null,
         config: Prisma.JsonNull,
         status: IntegrationStatus.NOT_CONFIGURED,
         lastHealthyAt: null,
@@ -198,7 +209,9 @@ describe('IntegrationsService', () => {
         }),
       }),
     );
-    expect(clearRuntimeHealth).toHaveBeenCalledWith(RuntimeHealthServiceKey.CATALOG);
+    expect(clearRuntimeHealth).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.CATALOG,
+    );
   });
 
   it('preserves the stored API key when saving without a new one and clears readiness on connection changes', async () => {
@@ -248,7 +261,9 @@ describe('IntegrationsService', () => {
         lastErrorMessage: null,
       }),
     });
-    expect(clearRuntimeHealth).toHaveBeenCalledWith(RuntimeHealthServiceKey.STASH);
+    expect(clearRuntimeHealth).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.STASH,
+    );
   });
 
   it('preserves runtime health when saving without a material connection change', async () => {
@@ -307,7 +322,9 @@ describe('IntegrationsService', () => {
     const result = await service.reset(IntegrationType.FANSDB);
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(clearRuntimeHealth).toHaveBeenCalledWith(RuntimeHealthServiceKey.CATALOG);
+    expect(clearRuntimeHealth).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.CATALOG,
+    );
     expect(result).toEqual({ type: IntegrationType.FANSDB });
   });
 
@@ -359,7 +376,9 @@ describe('IntegrationsService', () => {
     expect(stashUpsertCall.update.lastHealthyAt).toBeInstanceOf(Date);
     expect(stashUpsertCall.update.lastErrorAt).toBeNull();
     expect(stashUpsertCall.update.lastErrorMessage).toBeNull();
-    expect(recordManualRecovery).toHaveBeenCalledWith(RuntimeHealthServiceKey.STASH);
+    expect(recordManualRecovery).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.STASH,
+    );
   });
 
   it('persists the config that was tested when the test succeeds', async () => {
@@ -401,7 +420,9 @@ describe('IntegrationsService', () => {
         }),
       }),
     );
-    expect(recordManualRecovery).toHaveBeenCalledWith(RuntimeHealthServiceKey.STASH);
+    expect(recordManualRecovery).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.STASH,
+    );
   });
 
   it('marks the catalog runtime service healthy after a successful catalog repair test', async () => {
@@ -434,7 +455,9 @@ describe('IntegrationsService', () => {
       status: IntegrationStatus.CONFIGURED,
     });
 
-    expect(recordManualRecovery).toHaveBeenCalledWith(RuntimeHealthServiceKey.CATALOG);
+    expect(recordManualRecovery).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.CATALOG,
+    );
   });
 
   it('rejects testing a different catalog provider until catalog setup is reset', async () => {
@@ -503,7 +526,9 @@ describe('IntegrationsService', () => {
     expect(whisparrUpsertCall.update.lastHealthyAt).toBeNull();
     expect(whisparrUpsertCall.update.lastErrorAt).toBeInstanceOf(Date);
     expect(whisparrUpsertCall.update.lastErrorMessage).toBe('bad credentials');
-    expect(clearRuntimeHealth).toHaveBeenCalledWith(RuntimeHealthServiceKey.WHISPARR);
+    expect(clearRuntimeHealth).toHaveBeenCalledWith(
+      RuntimeHealthServiceKey.WHISPARR,
+    );
     expect(recordManualRecovery).not.toHaveBeenCalled();
   });
 
@@ -523,6 +548,9 @@ describe('IntegrationsService', () => {
         status: IntegrationStatus.CONFIGURED,
         baseUrl: 'http://stashdb.local/graphql',
         apiKey: null,
+        browserUrl: null,
+        defaultRootFolderPath: null,
+        defaultQualityProfileId: null,
         lastHealthyAt: new Date('2026-04-01T00:00:00.000Z'),
         config: buildCatalogProviderSelectionConfig(),
       },
@@ -532,6 +560,9 @@ describe('IntegrationsService', () => {
         status: IntegrationStatus.CONFIGURED,
         baseUrl: 'http://fansdb.local/graphql',
         apiKey: null,
+        browserUrl: null,
+        defaultRootFolderPath: null,
+        defaultQualityProfileId: null,
         lastHealthyAt: new Date('2026-04-01T00:00:00.000Z'),
         config: null,
       },

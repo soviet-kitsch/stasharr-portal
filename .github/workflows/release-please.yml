@@ -6,9 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: release-please
@@ -17,13 +15,18 @@ concurrency:
 jobs:
   release-please:
     name: Release Please
+    if: github.repository == 'enymawse/stasharr-portal' || vars.ENABLE_RELEASE_PLEASE == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
 
     steps:
       - name: Run release-please
         uses: googleapis/release-please-action@v4
         with:
           # Dedicated token so release PRs and tags can trigger downstream workflows.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

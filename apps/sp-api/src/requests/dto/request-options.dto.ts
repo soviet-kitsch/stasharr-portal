@@ -4,6 +4,12 @@ export class RequestOptionsSceneDto {
   studio!: string | null;
 }
 
+export type RequestDefaultSource =
+  | 'SAVED'
+  | 'CONFIGURED'
+  | 'ONLY_OPTION'
+  | 'REQUIRED';
+
 export class RequestOptionsDefaultsDto {
   monitored!: boolean;
   searchForMovie!: boolean;
@@ -30,6 +36,13 @@ export class RequestOptionsTagDto {
 
 export class RequestOptionsDto {
   settingsNotice?: string;
+  requiresSettings?: boolean;
+  plannedAction?: string;
+  plannedMessage?: string;
+  defaultSources?: {
+    rootFolderPath: RequestDefaultSource;
+    qualityProfileId: RequestDefaultSource;
+  };
   scene!: RequestOptionsSceneDto;
   defaults!: RequestOptionsDefaultsDto;
   rootFolders!: RequestOptionsRootFolderDto[];

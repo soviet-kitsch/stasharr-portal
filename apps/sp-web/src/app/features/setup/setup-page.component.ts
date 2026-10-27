@@ -509,6 +509,9 @@ export class SetupPageComponent implements OnInit {
       this.forms[type].setValue({
         name: integration?.name ?? '',
         baseUrl: integration?.baseUrl ?? '',
+        browserUrl: integration?.browserUrl ?? '',
+        defaultRootFolderPath: integration?.defaultRootFolderPath ?? '',
+        defaultQualityProfileId: integration?.defaultQualityProfileId?.toString() ?? '',
         apiKey: '',
         enabled: defaultEnabledValue(type, integration),
       });

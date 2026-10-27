@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { IndexingService } from '../indexing/indexing.service';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { integrationBrowserBaseUrl } from '../integrations/browser-url.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { withStashImageSize } from '../providers/stashdb/stashdb-image-url.util';
@@ -256,7 +257,7 @@ export class AcquisitionService {
       }
 
       return {
-        baseUrl,
+        baseUrl: integrationBrowserBaseUrl(integration) ?? baseUrl,
         apiKey: integration.apiKey,
       };
     } catch (error) {

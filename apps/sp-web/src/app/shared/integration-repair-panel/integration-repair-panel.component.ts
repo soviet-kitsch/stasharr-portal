@@ -4,6 +4,7 @@ import { ButtonDirective } from 'primeng/button';
 import { Message } from 'primeng/message';
 import {
   ReadinessState,
+  WhisparrDefaultOptions,
   integrationReadinessLabel,
 } from '../../core/api/integrations.types';
 import { IntegrationFormFieldsComponent } from '../integration-form-fields/integration-form-fields.component';
@@ -29,6 +30,11 @@ export class IntegrationRepairPanelComponent {
   @Input() hasStoredApiKey = false;
   @Input() enabledInputId = 'integration-enabled';
   @Input() showEnabledToggle = true;
+  @Input() showRequestDefaults = false;
+  @Input() defaultOptions: WhisparrDefaultOptions | null = null;
+  @Input() loadingDefaultOptions = false;
+  @Input() defaultOptionsError: string | null = null;
+  @Output() loadDefaultOptions = new EventEmitter<void>();
   @Input() lastHealthyAt: string | null = null;
   @Input() lastErrorAt: string | null = null;
   @Input() errorMessage: string | null = null;

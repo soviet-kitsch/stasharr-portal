@@ -92,6 +92,7 @@ describe('SettingsIntegrationsPageComponent', () => {
       getIntegrations: vi.fn().mockReturnValue(of(integrations)),
       updateIntegration: vi.fn(),
       testIntegration: vi.fn(),
+      getWhisparrDefaultOptions: vi.fn(),
       resetIntegration: vi.fn(),
       resetAllIntegrations: vi.fn(),
     };
@@ -209,6 +210,86 @@ describe('SettingsIntegrationsPageComponent', () => {
     return button as HTMLButtonElement;
   }
 
+  it('saves a configured browser address in place without testing credentials or resetting setup', async () => {
+    const integrations = buildSettingsIntegrations();
+    const { component, fixture, integrationsService } = await renderPage(
+      integrations,
+      buildSettingsSetupStatus(),
+    );
+    const saved = { ...integrations[0], browserUrl: 'https://media.example/stash' };
+    integrationsService.updateIntegration.mockReturnValue(of(saved));
+    integrationsService.getIntegrations.mockReturnValue(of([saved, ...integrations.slice(1)]));
+    component.formFor('STASH').patchValue({ browserUrl: saved.browserUrl });
+    component.saveAndTestIntegration('STASH');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(integrationsService.updateIntegration).toHaveBeenCalledWith('STASH', {
+      enabled: true,
+      name: undefined,
+      baseUrl: 'http://service.local',
+      browserUrl: saved.browserUrl,
+    });
+    expect(integrationsService.testIntegration).not.toHaveBeenCalled();
+    expect(integrationsService.resetIntegration).not.toHaveBeenCalled();
+    expect(component.formFor('STASH').controls.apiKey.value).toBe('');
+    expect(component.formFor('STASH').controls.browserUrl.value).toBe(saved.browserUrl);
+  });
+
+  it('loads default choices explicitly and saves Portal defaults without changing the Whisparr connection', async () => {
+    const integrations = buildSettingsIntegrations();
+    const { component, fixture, integrationsService } = await renderPage(
+      integrations,
+      buildSettingsSetupStatus(),
+    );
+    expect(integrationsService.getWhisparrDefaultOptions).not.toHaveBeenCalled();
+    integrationsService.getWhisparrDefaultOptions.mockReturnValue(
+      of({
+        rootFolders: [{ id: 1, path: '/data/library', accessible: true }],
+        qualityProfiles: [{ id: 7, name: 'HD' }],
+      }),
+    );
+    const loadButton = Array.from(
+      panelByTitle(fixture, 'Whisparr').querySelectorAll('button'),
+    ).find((button) => textContent(button) === 'Load choices from Whisparr');
+    loadButton?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(integrationsService.getWhisparrDefaultOptions).toHaveBeenCalledTimes(1);
+    const form = component.formFor('WHISPARR');
+    form.patchValue({ defaultRootFolderPath: '/data/library', defaultQualityProfileId: '7' });
+    const saved = {
+      ...integrations[1],
+      defaultRootFolderPath: '/data/library',
+      defaultQualityProfileId: 7,
+    };
+    integrationsService.updateIntegration.mockReturnValue(of(saved));
+    integrationsService.getIntegrations.mockReturnValue(
+      of([integrations[0], saved, ...integrations.slice(2)]),
+    );
+    component.saveAndTestIntegration('WHISPARR');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(integrationsService.updateIntegration).toHaveBeenCalledWith('WHISPARR', {
+      enabled: true,
+      name: undefined,
+      baseUrl: 'http://service.local',
+      defaultRootFolderPath: '/data/library',
+      defaultQualityProfileId: 7,
+    });
+    expect(integrationsService.testIntegration).not.toHaveBeenCalled();
+  });
+
+  it('rejects credential-bearing browser URLs before submitting', async () => {
+    const { component, integrationsService } = await renderPage(
+      buildSettingsIntegrations(),
+      buildSettingsSetupStatus(),
+    );
+    component
+      .formFor('STASH')
+      .patchValue({ browserUrl: 'https://user:secret@example.com?apiKey=secret' });
+    component.saveIntegration('STASH');
+    expect(integrationsService.updateIntegration).not.toHaveBeenCalled();
+  });
   it('shows the top-level readiness summary and checklist when all required services are ready', async () => {
     const { fixture, component } = await renderPage(
       [
@@ -398,12 +479,11 @@ describe('SettingsIntegrationsPageComponent', () => {
       setupService,
       runtimeHealthService,
       notifications,
-    } =
-      await renderPage(initialIntegrations, {
-        setupComplete: false,
-        required: { stash: true, catalog: true, whisparr: false },
-        catalogProvider: 'STASHDB',
-      });
+    } = await renderPage(initialIntegrations, {
+      setupComplete: false,
+      required: { stash: true, catalog: true, whisparr: false },
+      catalogProvider: 'STASHDB',
+    });
 
     const savedIntegration = buildIntegration({
       type: 'WHISPARR',
@@ -442,7 +522,7 @@ describe('SettingsIntegrationsPageComponent', () => {
       }),
     );
 
-    component.formFor('WHISPARR').setValue({
+    component.formFor('WHISPARR').patchValue({
       name: 'Remote Whisparr',
       baseUrl: 'http://whisparr.local',
       apiKey: 'token-123',
@@ -451,7 +531,7 @@ describe('SettingsIntegrationsPageComponent', () => {
 
     const panel = panelByTitle(fixture, 'Whisparr');
     const buttons = Array.from(panel.querySelectorAll('button') as NodeListOf<HTMLButtonElement>);
-    expect(buttons.map((button) => textContent(button)).slice(0, 2)).toEqual([
+    expect(integrationActionButtons(panel).map((button) => textContent(button))).toEqual([
       'Save & Test',
       'Save only',
     ]);
@@ -579,7 +659,7 @@ describe('SettingsIntegrationsPageComponent', () => {
     const saveSubject = new Subject<IntegrationResponse>();
     integrationsService.updateIntegration.mockReturnValue(saveSubject);
 
-    component.formFor('WHISPARR').setValue({
+    component.formFor('WHISPARR').patchValue({
       name: 'Remote Whisparr',
       baseUrl: 'http://whisparr.local',
       apiKey: 'token-123',
@@ -653,7 +733,7 @@ describe('SettingsIntegrationsPageComponent', () => {
       ),
     );
 
-    component.formFor('WHISPARR').setValue({
+    component.formFor('WHISPARR').patchValue({
       name: 'Remote Whisparr',
       baseUrl: 'http://whisparr.local',
       apiKey: 'token-123',

@@ -232,10 +232,10 @@ a {
 
 .card-art-link:focus-visible,
 .card-title a:focus-visible,
-.primary-link:focus-visible,
-.secondary-link:focus-visible,
+.primary-link:not(.p-button):focus-visible,
+.secondary-link:not(.p-button):focus-visible,
 .summary-card:focus-visible,
-.secondary-action:focus-visible {
+.secondary-action:not(.p-button):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -322,9 +322,9 @@ a {
   color: var(--acquisition-attention-copy);
 }
 
-.primary-link,
-.secondary-link,
-.secondary-action {
+.primary-link:not(.p-button),
+.secondary-link:not(.p-button),
+.secondary-action:not(.p-button) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -340,29 +340,29 @@ a {
     background 140ms ease;
 }
 
-.primary-link:hover,
-.secondary-link:hover,
-.secondary-action:hover {
+.primary-link:not(.p-button):hover,
+.secondary-link:not(.p-button):hover,
+.secondary-action:not(.p-button):hover {
   transform: translateY(-1px);
 }
 
-.primary-link {
+.primary-link:not(.p-button) {
   border: 1px solid color-mix(in srgb, var(--focus-ring) 52%, transparent);
   background: color-mix(in srgb, var(--focus-ring) 14%, var(--surface-elevated));
 }
 
-.secondary-link,
-.secondary-action {
+.secondary-link:not(.p-button),
+.secondary-action:not(.p-button) {
   border: 1px solid color-mix(in srgb, var(--border-strong) 56%, transparent);
   background: color-mix(in srgb, var(--surface-elevated) 96%, var(--surface-1));
 }
 
-.secondary-action {
+.secondary-action:not(.p-button) {
   cursor: pointer;
 }
 
-.small,
-.compact {
+.small:not(.p-button),
+.compact:not(.p-button) {
   min-height: 2rem;
   padding: 0.34rem 0.72rem;
   font-size: 0.8rem;

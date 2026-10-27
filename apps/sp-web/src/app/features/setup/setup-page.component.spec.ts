@@ -394,7 +394,7 @@ describe('SetupPageComponent', () => {
       }),
     );
 
-    component.formFor('WHISPARR').setValue({
+    component.formFor('WHISPARR').patchValue({
       name: 'Remote Whisparr',
       baseUrl: 'http://whisparr.local',
       apiKey: 'token-123',

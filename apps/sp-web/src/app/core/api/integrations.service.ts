@@ -6,6 +6,7 @@ import {
   IntegrationTestResponse,
   IntegrationType,
   UpdateIntegrationPayload,
+  WhisparrDefaultOptions,
 } from './integrations.types';
 
 @Injectable({
@@ -16,6 +17,12 @@ export class IntegrationsService {
 
   getIntegrations(): Observable<IntegrationResponse[]> {
     return this.http.get<IntegrationResponse[]>('/api/integrations');
+  }
+
+  getWhisparrDefaultOptions(): Observable<WhisparrDefaultOptions> {
+    return this.http.get<WhisparrDefaultOptions>(
+      '/api/integrations/WHISPARR/request-default-options',
+    );
   }
 
   updateIntegration(
@@ -29,10 +36,7 @@ export class IntegrationsService {
     type: IntegrationType,
     payload: UpdateIntegrationPayload,
   ): Observable<IntegrationTestResponse> {
-    return this.http.post<IntegrationTestResponse>(
-      `/api/integrations/${type}/test`,
-      payload,
-    );
+    return this.http.post<IntegrationTestResponse>(`/api/integrations/${type}/test`, payload);
   }
 
   resetIntegration(type: IntegrationType): Observable<IntegrationResponse> {

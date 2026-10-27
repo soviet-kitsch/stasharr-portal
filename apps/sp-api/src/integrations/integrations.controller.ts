@@ -24,6 +24,11 @@ export class IntegrationsController {
     return integrations.map((integration) => this.toResponseDto(integration));
   }
 
+  @Get('WHISPARR/request-default-options')
+  getWhisparrDefaultOptions() {
+    return this.integrationsService.getWhisparrDefaultOptions();
+  }
+
   @Put(':type')
   async update(
     @Param('type') type: string,
@@ -83,6 +88,9 @@ export class IntegrationsController {
     status: string;
     name: string | null;
     baseUrl: string | null;
+    browserUrl?: string | null;
+    defaultRootFolderPath?: string | null;
+    defaultQualityProfileId?: number | null;
     apiKey: string | null;
     lastHealthyAt: Date | null;
     lastErrorAt: Date | null;
@@ -94,6 +102,9 @@ export class IntegrationsController {
       status: integration.status as IntegrationResponseDto['status'],
       name: integration.name,
       baseUrl: integration.baseUrl,
+      browserUrl: integration.browserUrl ?? null,
+      defaultRootFolderPath: integration.defaultRootFolderPath ?? null,
+      defaultQualityProfileId: integration.defaultQualityProfileId ?? null,
       hasApiKey: !!integration.apiKey,
       lastHealthyAt: integration.lastHealthyAt?.toISOString() ?? null,
       lastErrorAt: integration.lastErrorAt?.toISOString() ?? null,
@@ -107,6 +118,9 @@ export class IntegrationsController {
     status: 'CONFIGURED' | 'ERROR';
     name: string | null;
     baseUrl: string | null;
+    browserUrl?: string | null;
+    defaultRootFolderPath?: string | null;
+    defaultQualityProfileId?: number | null;
     apiKey: string | null;
     lastHealthyAt: Date | null;
     lastErrorAt: Date | null;

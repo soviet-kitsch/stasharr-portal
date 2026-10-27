@@ -1,7 +1,4 @@
-import {
-  ApplicationConfig,
-  provideBrowserGlobalErrorListeners,
-} from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -10,6 +7,7 @@ import { providePrimeNG } from 'primeng/config';
 import Aura from '@primeuix/themes/aura';
 
 import { authRedirectInterceptor } from './core/interceptors/auth-redirect.interceptor';
+import { feedCacheInvalidationInterceptor } from './core/interceptors/feed-cache-invalidation.interceptor';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -21,7 +19,9 @@ export const appConfig: ApplicationConfig = {
         scrollPositionRestoration: 'top',
       }),
     ),
-    provideHttpClient(withInterceptors([authRedirectInterceptor])),
+    provideHttpClient(
+      withInterceptors([authRedirectInterceptor, feedCacheInvalidationInterceptor]),
+    ),
     provideAnimationsAsync(),
     providePrimeNG({
       theme: {

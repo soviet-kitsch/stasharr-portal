@@ -2,28 +2,18 @@
   display: block;
   max-width: 100%;
 }
-button {
-  min-height: 2.25rem;
-  margin: 0.2rem 0.35rem 0.2rem 0;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--button-border);
-  border-radius: 0.65rem;
-  color: var(--button-text);
-  background: var(--button-bg);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
+.request-actions,
+.batch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
-button:hover:not(:disabled) {
-  border-color: var(--focus-ring);
-}
-button:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
-}
-button:disabled {
-  opacity: 0.55;
-  cursor: wait;
+// Reuse native themed buttons; keep only layout in the request components.
+:host .p-button {
+  max-width: 100%;
+  white-space: normal;
+  justify-content: center;
 }
 p {
   line-height: 1.55;

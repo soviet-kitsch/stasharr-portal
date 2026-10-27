@@ -123,8 +123,8 @@
         <p class="eyebrow">Danger zone</p>
         <h3>Reset all integrations</h3>
         <p>
-          Resetting all integrations clears Stash, Whisparr, and the locked catalog provider
-          choice for this instance.
+          Resetting all integrations clears Stash, Whisparr, and the locked catalog provider choice
+          for this instance.
         </p>
 
         <button
@@ -152,6 +152,11 @@
           [hasStoredApiKey]="hasStoredApiKey(type)"
           [enabledInputId]="'settings-enabled-' + type"
           [showEnabledToggle]="showEnabledToggle(type)"
+          [showRequestDefaults]="type === 'WHISPARR'"
+          [defaultOptions]="defaultOptions()"
+          [loadingDefaultOptions]="loadingDefaultOptions()"
+          [defaultOptionsError]="defaultOptionsError()"
+          (loadDefaultOptions)="loadDefaultOptions()"
           [lastHealthyAt]="lastHealthyAt(type)"
           [lastErrorAt]="lastErrorAt(type)"
           [errorMessage]="integrations()[type]?.lastErrorMessage ?? null"

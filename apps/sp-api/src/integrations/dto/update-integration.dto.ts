@@ -1,4 +1,13 @@
-import { IsBoolean, IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class UpdateIntegrationDto {
   @IsOptional()
@@ -19,4 +28,20 @@ export class UpdateIntegrationDto {
   @IsOptional()
   @IsString()
   apiKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  browserUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  defaultRootFolderPath?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  defaultQualityProfileId?: number | null;
 }

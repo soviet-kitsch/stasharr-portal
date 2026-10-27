@@ -24,7 +24,12 @@ import { IntegrationsService } from '../integrations/integrations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { StashdbAdapter } from '../providers/stashdb/stashdb.adapter';
-import { WhisparrAdapter } from '../providers/whisparr/whisparr.adapter';
+import { ResumeSceneRequestDto } from './dto/resume-scene-request.dto';
+import {
+  WhisparrAdapter,
+  WhisparrMovieLookupResult,
+  WhisparrQueueSnapshotItem,
+} from '../providers/whisparr/whisparr.adapter';
 import { RequestOptionsDto } from './dto/request-options.dto';
 import { SubmitSceneRequestDto } from './dto/submit-scene-request.dto';
 import { SubmitSceneRequestResponseDto } from './dto/submit-scene-request-response.dto';
@@ -42,7 +47,12 @@ export class RequestsService {
     private readonly stashAdapter: StashAdapter,
   ) {}
 
-  async getRequestOptions(stashId: string): Promise<RequestOptionsDto> {
+  async getRequestOptions(
+    stashId: string,
+    scope = 'single',
+  ): Promise<RequestOptionsDto> {
+    if (!['single', 'batch', 'resume'].includes(scope))
+      throw new BadRequestException('Unsupported request settings scope.');
     const normalizedStashId = stashId.trim();
     if (!normalizedStashId) {
       throw new BadRequestException('Scene stashId is required.');
@@ -56,19 +66,26 @@ export class RequestsService {
       catalogConfig,
     );
 
+    const plan =
+      scope === 'resume'
+        ? await this.inspectResume(normalizedStashId, whisparrConfig)
+        : null;
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
       this.whisparrAdapter.getRootFolders(whisparrConfig),
       this.whisparrAdapter.getQualityProfiles(whisparrConfig),
       this.whisparrAdapter.getTags(whisparrConfig),
     ]);
 
-    if (rootFolders.filter((folder) => folder.accessible).length === 0) {
+    if (
+      plan?.requiresSettings !== false &&
+      rootFolders.filter((folder) => folder.accessible).length === 0
+    ) {
       throw new ConflictException(
         'No accessible Whisparr root folders are available.',
       );
     }
 
-    if (qualityProfiles.length === 0) {
+    if (plan?.requiresSettings !== false && qualityProfiles.length === 0) {
       throw new ConflictException(
         'No Whisparr quality profiles are available.',
       );
@@ -77,7 +94,10 @@ export class RequestsService {
     const previous = await this.prisma.request.findUnique({
       where: { stashId: normalizedStashId },
     });
-    const saved = previous?.settings as Partial<SubmitSceneRequestDto> | null;
+    const saved = (
+      scope === 'batch' ? null : previous?.settings
+    ) as Partial<SubmitSceneRequestDto> | null;
+    const integration = await this.getIntegration(IntegrationType.WHISPARR);
     const savedRoot =
       saved?.rootFolderPath &&
       rootFolders.some(
@@ -90,15 +110,58 @@ export class RequestsService {
       qualityProfiles.some((profile) => profile.id === saved.qualityProfileId)
         ? saved.qualityProfileId
         : null;
+    const accessibleRoots = rootFolders.filter((folder) => folder.accessible);
+    const configuredRoot =
+      integration.defaultRootFolderPath &&
+      accessibleRoots.some(
+        (folder) => folder.path === integration.defaultRootFolderPath,
+      )
+        ? integration.defaultRootFolderPath
+        : null;
+    const configuredProfile =
+      integration.defaultQualityProfileId &&
+      qualityProfiles.some(
+        (profile) => profile.id === integration.defaultQualityProfileId,
+      )
+        ? integration.defaultQualityProfileId
+        : null;
+    const root =
+      savedRoot ??
+      configuredRoot ??
+      (accessibleRoots.length === 1 ? accessibleRoots[0].path : null);
+    const profile =
+      savedProfile ??
+      configuredProfile ??
+      (qualityProfiles.length === 1 ? qualityProfiles[0].id : null);
     const savedTags =
       saved?.tags?.filter((id) => tags.some((tag) => tag.id === id)) ?? [];
+    const defaultSources = {
+      rootFolderPath: savedRoot
+        ? ('SAVED' as const)
+        : configuredRoot
+          ? ('CONFIGURED' as const)
+          : root
+            ? ('ONLY_OPTION' as const)
+            : ('REQUIRED' as const),
+      qualityProfileId: savedProfile
+        ? ('SAVED' as const)
+        : configuredProfile
+          ? ('CONFIGURED' as const)
+          : profile
+            ? ('ONLY_OPTION' as const)
+            : ('REQUIRED' as const),
+    };
     return {
-      ...(previous
-        ? {
-            settingsNotice: saved
-              ? 'Review the saved settings. Missing folders, profiles or tags must be selected again.'
-              : 'This older request has no saved settings. Choose a folder and quality profile before re-requesting.',
-          }
+      settingsNotice:
+        scope === 'batch'
+          ? 'Common settings apply only to new entries. Existing Whisparr entries keep their settings.'
+          : previous
+            ? 'Review the selected settings. Valid saved choices take precedence over configured defaults; existing Whisparr entries keep their settings.'
+            : undefined,
+      defaultSources,
+      requiresSettings: plan?.requiresSettings ?? true,
+      ...(plan
+        ? { plannedAction: plan.outcome, plannedMessage: plan.message }
         : {}),
       scene: {
         stashId: scene.id,
@@ -108,13 +171,9 @@ export class RequestsService {
       defaults: {
         monitored: saved?.monitored ?? true,
         searchForMovie: saved?.searchForMovie ?? true,
-        ...(previous
-          ? {
-              rootFolderPath: savedRoot,
-              qualityProfileId: savedProfile,
-              tags: savedTags,
-            }
-          : {}),
+        rootFolderPath: root,
+        qualityProfileId: profile,
+        tags: savedTags,
       },
       rootFolders,
       qualityProfiles,
@@ -124,7 +183,7 @@ export class RequestsService {
 
   async submitSceneRequest(
     stashId: string,
-    dto: SubmitSceneRequestDto,
+    dto: SubmitSceneRequestDto | ResumeSceneRequestDto,
     kind: 'REQUEST' | 'RE_REQUEST' = 'REQUEST',
   ): Promise<SubmitSceneRequestResponseDto> {
     const id = this.normalizeId(stashId);
@@ -140,14 +199,15 @@ export class RequestsService {
       dto.operationKey ?? randomUUID(),
       kind,
       payload,
-      (dispatch) => this.performSubmitSceneRequest(id, dto, dispatch),
+      (dispatch) => this.performSubmitSceneRequest(id, dto, dispatch, kind),
     );
   }
 
   private async performSubmitSceneRequest(
     stashId: string,
-    dto: SubmitSceneRequestDto,
+    dto: SubmitSceneRequestDto | ResumeSceneRequestDto,
     dispatch: BeforeDispatch,
+    kind: 'REQUEST' | 'RE_REQUEST',
   ): Promise<SubmitSceneRequestResponseDto> {
     const normalizedStashId = stashId.trim();
     if (!normalizedStashId) {
@@ -180,6 +240,8 @@ export class RequestsService {
         stashAvailable: true,
       });
       return {
+        outcome: 'ALREADY_AVAILABLE',
+        message: 'Already available in Stash. No download was started.',
         accepted: true,
         alreadyExists: true,
         stashId: normalizedStashId,
@@ -188,6 +250,22 @@ export class RequestsService {
     }
     const title = scene.title.trim();
     const studio = scene.studioName?.trim() ?? '';
+
+    const existingMovie = await this.whisparrAdapter.findMovieByStashId(
+      normalizedStashId,
+      whisparrConfig,
+    );
+    if (existingMovie) {
+      return this.resumeExistingMovie(
+        normalizedStashId,
+        existingMovie,
+        scene,
+        dto,
+        whisparrConfig,
+        dispatch,
+        kind === 'RE_REQUEST',
+      );
+    }
 
     if (!title) {
       throw new ConflictException(
@@ -201,39 +279,10 @@ export class RequestsService {
       );
     }
 
-    const existingMovie = await this.whisparrAdapter.findMovieByStashId(
-      normalizedStashId,
-      whisparrConfig,
-    );
-    if (existingMovie) {
-      const request = await this.upsertLocalRequestRow(normalizedStashId);
-      await this.indexingService.seedRequestedScene({
-        stashId: normalizedStashId,
-        requestStatus: request.status,
-        requestUpdatedAt: request.updatedAt,
-        requestRevision: request.revision,
-        requestDismissedAt: null,
-        title: scene.title,
-        description: scene.details,
-        imageUrl: scene.imageUrl,
-        studioId: scene.studioId,
-        studioName: scene.studioName,
-        studioImageUrl: scene.studioImageUrl,
-        releaseDate: scene.releaseDate,
-        duration: scene.duration,
-        whisparrMovieId: existingMovie.movieId,
-        whisparrHasFile: existingMovie.hasFile,
-      });
-      void this.indexingService.requestImmediateRefresh(
-        [normalizedStashId],
-        'request-existing-movie',
+    if (!dto.rootFolderPath || !dto.qualityProfileId) {
+      throw new ConflictException(
+        'The Whisparr entry is missing. Review a destination library and quality profile before creating it.',
       );
-      return {
-        accepted: true,
-        alreadyExists: true,
-        stashId: normalizedStashId,
-        whisparrMovieId: existingMovie.movieId,
-      };
     }
 
     const [rootFolders, qualityProfiles, tags] = await Promise.all([
@@ -286,6 +335,41 @@ export class RequestsService {
       }
     }
 
+    const freshOwned = await this.getStashMatches(normalizedStashId);
+    const freshMovie = await this.whisparrAdapter.findMovieByStashId(
+      normalizedStashId,
+      whisparrConfig,
+    );
+    if (freshOwned.length || freshMovie) {
+      // State changed during settings validation. Re-evaluate once through the
+      // same guarded resume path instead of sending a duplicate create.
+      if (freshOwned.length) {
+        await this.upsertLocalRequestRow(normalizedStashId);
+        await this.indexingService.refreshRequestRow(normalizedStashId);
+        return {
+          accepted: true,
+          alreadyExists: true,
+          stashId: normalizedStashId,
+          whisparrMovieId: freshMovie?.movieId ?? null,
+          outcome: 'ALREADY_AVAILABLE',
+          message: 'Already available in Stash. No download was started.',
+        };
+      }
+      return this.resumeExistingMovie(
+        normalizedStashId,
+        freshMovie!,
+        scene,
+        dto,
+        whisparrConfig,
+        dispatch,
+        kind === 'RE_REQUEST',
+      );
+    }
+    const settings: SubmitSceneRequestDto = {
+      ...dto,
+      rootFolderPath: selectedRootFolder.path,
+      qualityProfileId: selectedQualityProfile.id,
+    };
     await dispatch({
       operation: 'CREATE_MOVIE',
       settings: {
@@ -312,7 +396,10 @@ export class RequestsService {
       whisparrConfig,
     );
 
-    const request = await this.upsertLocalRequestRow(normalizedStashId, dto);
+    const request = await this.upsertLocalRequestRow(
+      normalizedStashId,
+      settings,
+    );
     await this.indexingService.seedRequestedScene({
       stashId: normalizedStashId,
       requestStatus: request.status,
@@ -336,10 +423,208 @@ export class RequestsService {
     );
 
     return {
+      outcome: 'REQUEST_CREATED',
+      message: 'A new Whisparr entry was created using the reviewed settings.',
       accepted: true,
       alreadyExists: false,
       stashId: normalizedStashId,
       whisparrMovieId: createdMovie.movieId ?? null,
+    };
+  }
+
+  private async inspectResume(
+    id: string,
+    config: { baseUrl: string; apiKey: string | null },
+  ) {
+    if ((await this.getStashMatches(id)).length)
+      return {
+        outcome: 'ALREADY_AVAILABLE',
+        message:
+          'Already available in Stash; reconcile status without acquiring another copy.',
+        requiresSettings: false,
+      };
+    const movie = await this.whisparrAdapter.findMovieByStashId(id, config);
+    if (!movie)
+      return {
+        outcome: 'CREATE_MOVIE',
+        message:
+          'Create an entry only if it is still missing, using reviewed library and quality settings.',
+        requiresSettings: true,
+      };
+    const state = await this.inspectExistingMovie(id, movie, config);
+    return { ...state, requiresSettings: false };
+  }
+
+  private queueBlocker(item: WhisparrQueueSnapshotItem): string | null {
+    const status =
+      `${item.status ?? ''} ${item.trackedDownloadState ?? ''} ${item.trackedDownloadStatus ?? ''}`.toLowerCase();
+    if (
+      item.errorMessage?.trim() ||
+      /error|warning|failed|blocked|paused/.test(status)
+    ) {
+      return (
+        item.errorMessage?.trim().slice(0, 1000) ||
+        'Whisparr reports a blocked, paused or failed queue entry. Inspect its queue details.'
+      );
+    }
+    return null;
+  }
+
+  private async inspectExistingMovie(
+    id: string,
+    movie: WhisparrMovieLookupResult,
+    config: { baseUrl: string; apiKey: string | null },
+  ) {
+    if (movie.hasFile)
+      return {
+        outcome: 'NEEDS_IDENTIFICATION',
+        message:
+          'Whisparr already has the file. Review its Stash match or identification; no new download was started.',
+      };
+    const [queue, commands] = await Promise.all([
+      this.whisparrAdapter.getQueueSnapshot(config),
+      this.whisparrAdapter.getSearchCommands(config),
+    ]);
+    const entries = queue.filter((item) => item.movieId === movie.movieId);
+    const blocked = entries
+      .map((entry) => this.queueBlocker(entry))
+      .find(Boolean);
+    if (blocked)
+      return {
+        outcome: 'UPSTREAM_BLOCKED',
+        message:
+          blocked +
+          ' Review the existing Whisparr queue entry; no queue item was removed or resubmitted.',
+      };
+    if (
+      entries.some((item) =>
+        /import|completed|downloaded/.test(
+          `${item.status ?? ''} ${item.trackedDownloadState ?? ''}`.toLowerCase(),
+        ),
+      )
+    ) {
+      return {
+        outcome: 'IMPORT_PENDING',
+        message:
+          'The existing download is awaiting import in Whisparr. Inspect its import details; no additional download was started.',
+      };
+    }
+    if (entries.length)
+      return {
+        outcome: 'ALREADY_QUEUED',
+        message:
+          'The existing acquisition is queued or downloading. Its current job was reused.',
+      };
+    if (
+      commands.some(
+        (command) =>
+          command.movieIds.includes(movie.movieId) &&
+          (['queued', 'started'].includes(command.status.toLowerCase()) ||
+            (command.queuedAt &&
+              Date.now() - new Date(command.queuedAt).getTime() < 60_000)),
+      )
+    ) {
+      return {
+        outcome: 'ALREADY_SEARCHING',
+        message:
+          'A search is already running or was just started. No duplicate search was sent.',
+      };
+    }
+    void id;
+    return {
+      outcome: 'SEARCH_MOVIE',
+      message:
+        'Reuse the existing Whisparr entry and start one search if requested. Its monitoring, quality and library settings stay unchanged.',
+    };
+  }
+
+  private async resumeExistingMovie(
+    id: string,
+    movie: WhisparrMovieLookupResult,
+    scene: Awaited<ReturnType<StashdbAdapter['getSceneById']>>,
+    dto: SubmitSceneRequestDto | ResumeSceneRequestDto,
+    config: { baseUrl: string; apiKey: string | null },
+    dispatch: BeforeDispatch,
+    resume: boolean,
+  ): Promise<SubmitSceneRequestResponseDto> {
+    let result = resume
+      ? await this.inspectExistingMovie(id, movie, config)
+      : {
+          outcome: 'ENTRY_REUSED',
+          message:
+            'The existing Whisparr entry was reused. No duplicate request was sent.',
+        };
+    let commandId: number | undefined;
+    if (resume && result.outcome === 'SEARCH_MOVIE' && dto.searchForMovie) {
+      // Check all externally mutable evidence again immediately before marking
+      // dispatch. The durable per-scene claim serializes Portal workers.
+      const [owned, fresh] = await Promise.all([
+        this.getStashMatches(id),
+        this.whisparrAdapter.findMovieByStashId(id, config),
+      ]);
+      if (owned.length)
+        result = {
+          outcome: 'ALREADY_AVAILABLE',
+          message: 'Already available in Stash. No new download was started.',
+        };
+      else if (!fresh || fresh.movieId !== movie.movieId)
+        throw new ConflictException(
+          'The entry changed during the check. Refresh status and review the request again.',
+        );
+      else {
+        movie = fresh;
+        result = await this.inspectExistingMovie(id, movie, config);
+        if (result.outcome === 'SEARCH_MOVIE') {
+          await dispatch({ operation: 'SEARCH_MOVIE', movieId: movie.movieId });
+          const command = await this.whisparrAdapter.searchMovie(
+            movie.movieId,
+            config,
+          );
+          commandId = command.commandId;
+          result = {
+            outcome: 'SEARCH_STARTED',
+            message:
+              'One search was started on the existing Whisparr entry. Its settings were preserved.',
+          };
+        }
+      }
+    } else if (result.outcome === 'SEARCH_MOVIE')
+      result = {
+        outcome: 'ENTRY_REUSED',
+        message:
+          'The existing Whisparr entry was reused. Search was not requested; its settings were preserved.',
+      };
+    const request = await this.upsertLocalRequestRow(id);
+    await this.indexingService.seedRequestedScene({
+      stashId: id,
+      requestStatus: request.status,
+      requestUpdatedAt: request.updatedAt,
+      requestRevision: request.revision,
+      requestDismissedAt: null,
+      title: scene.title,
+      description: scene.details,
+      imageUrl: scene.imageUrl,
+      studioId: scene.studioId,
+      studioName: scene.studioName,
+      studioImageUrl: scene.studioImageUrl,
+      releaseDate: scene.releaseDate,
+      duration: scene.duration,
+      whisparrMovieId: movie.movieId,
+      whisparrHasFile: movie.hasFile,
+      ...(result.outcome === 'ALREADY_AVAILABLE'
+        ? { stashAvailable: true }
+        : {}),
+    });
+    void this.indexingService
+      .requestImmediateRefresh([id], 'request-resumed')
+      .catch(() => {});
+    return {
+      accepted: true,
+      alreadyExists: true,
+      stashId: id,
+      whisparrMovieId: movie.movieId,
+      ...result,
+      ...(commandId ? { commandId } : {}),
     };
   }
 
@@ -462,7 +747,7 @@ export class RequestsService {
         throw new ConflictException(
           'The entry changed during the check. Refresh status before continuing.',
         );
-      await dispatch({ movieId: movie.movieId });
+      await dispatch({ operation: 'SEARCH_MOVIE', movieId: movie.movieId });
       const result = await this.whisparrAdapter.searchMovie(
         movie.movieId,
         config,
@@ -526,7 +811,14 @@ export class RequestsService {
       };
     }
     const config = await this.getWhisparrConfig();
-    if (action.kind === 'REQUEST' || action.kind === 'RE_REQUEST') {
+    const dispatchDetails = action.details as {
+      operation?: string;
+      movieId?: number;
+    } | null;
+    if (
+      (action.kind === 'REQUEST' || action.kind === 'RE_REQUEST') &&
+      dispatchDetails?.operation !== 'SEARCH_MOVIE'
+    ) {
       await this.getActiveCatalogConfig();
       const movie = await this.whisparrAdapter.findMovieByStashId(id, config);
       if (movie || (await this.getStashMatches(id)).length) {
@@ -560,7 +852,10 @@ export class RequestsService {
         }
         return { outcome: 'REQUEST_CONFIRMED' };
       }
-    } else if (action.kind === 'SEARCH') {
+    } else if (
+      action.kind === 'SEARCH' ||
+      dispatchDetails?.operation === 'SEARCH_MOVIE'
+    ) {
       const details = action.details as { movieId?: number } | null;
       const commands = await this.whisparrAdapter.getSearchCommands(config);
       const match = commands.find(
@@ -582,8 +877,13 @@ export class RequestsService {
   }
 
   async previewBatch(dto: BatchRequestActionDto) {
-    const results: Array<{ id: string; eligible: boolean; message: string }> =
-      [];
+    const results: Array<{
+      id: string;
+      eligible: boolean;
+      message: string;
+      plannedAction?: string;
+      requiresSettings?: boolean;
+    }> = [];
     for (const raw of dto.ids) {
       const id = this.normalizeId(raw);
       try {
@@ -605,31 +905,34 @@ export class RequestsService {
           });
           continue;
         }
+        const config = await this.getWhisparrConfig();
+        if (dto.kind === 'RE_REQUEST') {
+          const plan = await this.inspectResume(id, config);
+          results.push({
+            id,
+            eligible: true,
+            message: plan.message,
+            plannedAction: plan.outcome,
+            requiresSettings: plan.requiresSettings,
+          });
+          continue;
+        }
         if ((await this.getStashMatches(id)).length)
           throw new ConflictException('Already available in Stash.');
-        const movie = await this.whisparrAdapter.findMovieByStashId(
-          id,
-          await this.getWhisparrConfig(),
-        );
-        if (dto.kind === 'RE_REQUEST' && movie)
-          throw new ConflictException(
-            movie.hasFile
-              ? 'Already imported. Review its Stash match.'
-              : 'Already in Whisparr. Use Search again.',
-          );
-        if (dto.kind === 'SEARCH' && (!movie || movie.hasFile))
+        const movie = await this.whisparrAdapter.findMovieByStashId(id, config);
+        if (!movie || movie.hasFile)
           throw new ConflictException(
             movie
               ? 'Already imported. Review its Stash match.'
               : 'Missing in Whisparr. Use Re-request.',
           );
+        const plan = await this.inspectExistingMovie(id, movie, config);
         results.push({
           id,
           eligible: true,
-          message:
-            dto.kind === 'SEARCH'
-              ? 'Run one search; existing monitoring settings are preserved.'
-              : 'Create only if still absent, using the settings you review.',
+          message: plan.message,
+          plannedAction: plan.outcome,
+          requiresSettings: false,
         });
       } catch (error) {
         results.push({
@@ -664,13 +967,15 @@ export class RequestsService {
         else if (dto.kind === 'SEARCH')
           result = await this.searchAgain(id, key);
         else {
-          if (!dto.settings)
-            throw new BadRequestException(
-              'Review the folder and quality settings before re-requesting.',
-            );
           result = await this.submitSceneRequest(
             id,
-            { ...dto.settings, operationKey: key },
+            {
+              monitored: true,
+              searchForMovie: true,
+              tags: [],
+              ...dto.settings,
+              operationKey: key,
+            },
             'RE_REQUEST',
           );
         }

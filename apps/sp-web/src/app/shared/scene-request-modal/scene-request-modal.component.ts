@@ -21,7 +21,11 @@ import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { DiscoverService } from '../../core/api/discover.service';
 import { AppNotificationsService } from '../../core/notifications/app-notifications.service';
-import { SceneRequestOptions, SubmitSceneRequestPayload } from '../../core/api/discover.types';
+import {
+  SceneRequestOptions,
+  SubmitSceneRequestPayload,
+  ResumeSceneRequestPayload,
+} from '../../core/api/discover.types';
 
 type StringSelectOption = {
   label: string;
@@ -54,6 +58,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
   private readonly discoverService = inject(DiscoverService);
   private readonly notifications = inject(AppNotificationsService);
   private loadedForSceneId: string | null = null;
+  private loadedScope: string | null = null;
   private loadingSceneId: string | null = null;
   private optionsLoadSub: Subscription | null = null;
 
@@ -148,7 +153,11 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       return;
     }
 
-    if (this.loadedForSceneId === nextSceneId && this.requestOptions()) {
+    if (
+      this.loadedForSceneId === nextSceneId &&
+      this.loadedScope === this.optionsScope() &&
+      this.requestOptions()
+    ) {
       return;
     }
 
@@ -157,6 +166,25 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.cancelOptionsLoad();
+  }
+
+  protected defaultSourceLabel(source: string | undefined): string {
+    return (
+      (
+        {
+          SAVED: 'Saved request preference',
+          CONFIGURED: 'Configured default',
+          ONLY_OPTION: 'Only available option',
+          REQUIRED: 'Choose a value',
+        } as Record<string, string>
+      )[source ?? ''] ?? ''
+    );
+  }
+
+  protected requiresCreationSettings(): boolean {
+    return (
+      !this.rerequest || this.settingsOnly || this.requestOptions()?.requiresSettings !== false
+    );
   }
 
   protected closeModal(): void {
@@ -186,13 +214,15 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       return;
     }
 
-    if (this.requestForm.invalid) {
+    const needsSettings =
+      !this.rerequest || this.settingsOnly || this.requestOptions()?.requiresSettings !== false;
+    if (needsSettings && this.requestForm.invalid) {
       this.requestForm.markAllAsTouched();
       return;
     }
 
     const qualityProfileId = this.requestForm.controls.qualityProfileId.value;
-    if (!qualityProfileId) {
+    if (needsSettings && !qualityProfileId) {
       this.requestForm.controls.qualityProfileId.markAsTouched();
       return;
     }
@@ -201,7 +231,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       monitored: this.requestForm.controls.monitored.value,
       rootFolderPath: this.requestForm.controls.rootFolderPath.value,
       searchForMovie: this.requestForm.controls.searchForMovie.value,
-      qualityProfileId,
+      qualityProfileId: qualityProfileId ?? 0,
       tags: this.requestForm.controls.tags.value,
     };
     if (this.settingsOnly) {
@@ -209,7 +239,10 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       this.closed.emit();
       return;
     }
-    const body = JSON.stringify({ currentSceneId, settings, rerequest: this.rerequest });
+    const payload: ResumeSceneRequestPayload = needsSettings
+      ? settings
+      : { monitored: settings.monitored, searchForMovie: settings.searchForMovie, tags: [] };
+    const body = JSON.stringify({ currentSceneId, settings: payload, rerequest: this.rerequest });
     if (body !== this.submissionBody) {
       this.submissionBody = body;
       this.submissionKey = crypto.randomUUID();
@@ -220,7 +253,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
     this.discoverService
       .submitSceneRequest(
         currentSceneId,
-        { ...settings, operationKey: this.submissionKey },
+        { ...payload, operationKey: this.submissionKey },
         this.rerequest,
       )
       .pipe(
@@ -231,12 +264,21 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       .subscribe({
         next: (response) => {
           this.submissionBody = '';
-          this.notifications.success(
-            response.alreadyExists
+          const summary =
+            response.message ??
+            (response.alreadyExists
               ? 'Scene already present; no duplicate request sent'
-              : 'Scene request submitted to Whisparr',
-            'Track progress on Acquisition.',
-          );
+              : 'Scene request submitted to Whisparr');
+          if (
+            ['NEEDS_IDENTIFICATION', 'UPSTREAM_BLOCKED', 'IMPORT_PENDING'].includes(
+              response.outcome ?? '',
+            )
+          ) {
+            this.notifications.info(
+              summary,
+              'Review the existing file or queue entry on Acquisition.',
+            );
+          } else this.notifications.success(summary, 'Track progress on Acquisition.');
           this.submitted.emit(currentSceneId);
           this.closed.emit();
         },
@@ -252,6 +294,10 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       });
   }
 
+  private optionsScope(): 'single' | 'batch' | 'resume' {
+    return this.settingsOnly ? 'batch' : this.rerequest ? 'resume' : 'single';
+  }
+
   private loadOptionsForScene(sceneId: string): void {
     if (this.requestOptionsLoading() && this.loadingSceneId === sceneId) {
       return;
@@ -264,7 +310,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
     this.requestOptionsLoading.set(true);
 
     const subscription = this.discoverService
-      .getSceneRequestOptions(sceneId)
+      .getSceneRequestOptions(sceneId, this.optionsScope())
       .pipe(
         finalize(() => {
           this.requestOptionsLoading.set(false);
@@ -277,18 +323,13 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       .subscribe({
         next: (options) => {
           this.loadedForSceneId = sceneId;
+          this.loadedScope = this.optionsScope();
           this.requestOptions.set(options);
           this.requestForm.patchValue({
             monitored: options.defaults.monitored,
             searchForMovie: options.defaults.searchForMovie,
-            rootFolderPath: options.settingsNotice
-              ? (options.defaults.rootFolderPath ?? '')
-              : (options.rootFolders.find((folder) => folder.accessible)?.path ??
-                options.rootFolders[0]?.path ??
-                ''),
-            qualityProfileId: options.settingsNotice
-              ? (options.defaults.qualityProfileId ?? null)
-              : (options.qualityProfiles[0]?.id ?? null),
+            rootFolderPath: options.defaults.rootFolderPath ?? '',
+            qualityProfileId: options.defaults.qualityProfileId ?? null,
             tags: options.defaults.tags ?? [],
           });
         },

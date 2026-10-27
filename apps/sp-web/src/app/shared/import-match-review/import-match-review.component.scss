@@ -1,0 +1,65 @@
+:host {
+  display: inline-flex;
+  max-width: 100%;
+}
+.match-review-body {
+  display: grid;
+  gap: 0.8rem;
+}
+p,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.5;
+}
+p,
+li,
+dd,
+code {
+  overflow-wrap: anywhere;
+}
+dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.65fr) minmax(0, 1.35fr);
+  gap: 0.5rem 0.8rem;
+  margin: 0;
+}
+dt {
+  color: var(--text-muted);
+}
+dd {
+  margin: 0;
+}
+.review-summary {
+  font-weight: 600;
+}
+.review-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.match-candidate {
+  padding: 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.5rem;
+}
+ol,
+ul {
+  margin: 0;
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.45rem;
+}
+summary {
+  cursor: pointer;
+  margin-bottom: 0.45rem;
+}
+@media (max-width: 560px) {
+  dl {
+    grid-template-columns: 1fr;
+  }
+  dd {
+    margin-bottom: 0.5rem;
+  }
+}

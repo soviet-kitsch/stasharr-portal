@@ -2,6 +2,8 @@ import { Component, EventEmitter, Input, Output, inject, signal } from '@angular
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
+import { ButtonDirective } from 'primeng/button';
+import { requestOutcomeMessage } from './request-outcome';
 import { Dialog } from 'primeng/dialog';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
 
@@ -13,18 +15,21 @@ interface ActionHistory {
     kind: string;
     state: string;
     createdAt: string;
-    result: { outcome?: string } | null;
+    result: { outcome?: string; message?: string } | null;
   }>;
 }
 
 @Component({
   selector: 'app-request-actions',
-  imports: [Dialog, DatePipe, SceneRequestModalComponent],
+  imports: [ButtonDirective, Dialog, DatePipe, SceneRequestModalComponent],
   styleUrl: './request-actions.component.scss',
   template: `
-    <div class="app-action-row">
-      @if (tracked && (!condition || condition === 'ORPHANED_REQUEST')) {
+    <div class="app-action-row request-actions">
+      @if (tracked) {
         <button
+          pButton
+          size="small"
+          severity="secondary"
           class="secondary-action small"
           type="button"
           [disabled]="busy()"
@@ -35,6 +40,9 @@ interface ActionHistory {
       }
       @if (tracked && (!condition || condition === 'WAITING_FOR_RELEASE')) {
         <button
+          pButton
+          size="small"
+          severity="secondary"
           class="secondary-action small"
           type="button"
           [disabled]="busy()"
@@ -45,6 +53,9 @@ interface ActionHistory {
       }
       @if (tracked) {
         <button
+          pButton
+          size="small"
+          severity="secondary"
           class="secondary-action small"
           type="button"
           [disabled]="busy()"
@@ -54,6 +65,9 @@ interface ActionHistory {
         </button>
       }
       <button
+        pButton
+        size="small"
+        severity="secondary"
         class="secondary-action small"
         type="button"
         [disabled]="busy()"
@@ -66,10 +80,13 @@ interface ActionHistory {
       <p role="status">{{ message() }}</p>
     }
     <p-dialog
+      styleClass="app-review-dialog"
       header="Delete request from Portal?"
       [visible]="deleteOpen()"
       (visibleChange)="deleteOpen.set($event)"
       [modal]="true"
+      [blockScroll]="true"
+      [appendTo]="'body'"
       [closable]="!busy()"
       [closeOnEscape]="!busy()"
       [style]="{ width: '32rem', maxWidth: '95vw' }"
@@ -79,36 +96,70 @@ interface ActionHistory {
         This removes the request from Portal's active queue. Whisparr entries, downloads and media
         files remain unchanged. The history is kept, and you can restore the request.
       </p>
-      <button type="button" [disabled]="busy()" (click)="execute('dismiss')">
-        {{ busy() ? 'Removing…' : 'Delete from Portal' }}
-      </button>
-      <button type="button" [disabled]="busy()" (click)="deleteOpen.set(false)">Cancel</button>
+      <div class="app-action-row">
+        <button
+          pButton
+          severity="danger"
+          type="button"
+          [disabled]="busy()"
+          (click)="execute('dismiss')"
+        >
+          {{ busy() ? 'Removing…' : 'Delete from Portal' }}
+        </button>
+        <button
+          pButton
+          severity="secondary"
+          type="button"
+          [disabled]="busy()"
+          (click)="deleteOpen.set(false)"
+        >
+          Cancel
+        </button>
+      </div>
     </p-dialog>
     <p-dialog
+      styleClass="app-review-dialog"
       header="Request history"
       [visible]="historyOpen()"
       (visibleChange)="historyOpen.set($event)"
       [modal]="true"
+      [blockScroll]="true"
+      [appendTo]="'body'"
       [style]="{ width: '38rem', maxWidth: '95vw' }"
     >
       <p>{{ sceneTitle }}</p>
       @if (history(); as value) {
         @if (value.activeActionId) {
           <p>An action is running or its outcome needs checking.</p>
-          <button type="button" [disabled]="busy()" (click)="execute('outcome')">
+          <button
+            pButton
+            severity="secondary"
+            type="button"
+            [disabled]="busy()"
+            (click)="execute('outcome')"
+          >
             Check outcome
           </button>
         }
         @if (value.dismissed) {
-          <button type="button" [disabled]="busy()" (click)="execute('restore')">
+          <button
+            pButton
+            severity="secondary"
+            type="button"
+            [disabled]="busy()"
+            (click)="execute('restore')"
+          >
             Restore request
           </button>
         }
         <ol class="action-history">
           @for (action of value.actions; track action.id) {
             <li>
-              <strong>{{ actionLabel(action.kind) }}</strong> — {{ stateLabel(action.state)
-              }}<time>{{ action.createdAt | date: 'medium' }}</time>
+              <strong>{{ actionLabel(action.kind) }}</strong> — {{ stateLabel(action.state) }}
+              @if (action.result?.message || outcomeMessage(action.result?.outcome)) {
+                <p>{{ action.result?.message || outcomeMessage(action.result?.outcome) }}</p>
+              }
+              <time>{{ action.createdAt | date: 'medium' }}</time>
             </li>
           }
         </ol>
@@ -144,6 +195,7 @@ export class RequestActionsComponent {
   protected readonly history = signal<ActionHistory | null>(null);
   protected readonly message = signal<string | null>(null);
   private keys = new Map<string, string>();
+  protected readonly outcomeMessage = requestOutcomeMessage;
   protected actionLabel(kind: string): string {
     return (
       (

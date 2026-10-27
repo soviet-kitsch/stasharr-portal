@@ -53,6 +53,27 @@ describe('StashAdapter', () => {
     },
   );
 
+  it('uses browser URL for scene links while API traffic keeps its internal address and key', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: { findScenes: { scenes: [{ id: '42', files: [] }] } },
+      }),
+    } as Response);
+    const copies = await adapter.findScenesByStashId('scene-1', {
+      baseUrl: 'http://stash:9999/internal',
+      browserUrl: 'https://media.example/stash/',
+      apiKey: 'preserved-key',
+    });
+    expect(copies[0].viewUrl).toBe('https://media.example/stash/scenes/42');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://stash:9999/internal/graphql',
+      expect.objectContaining({
+        headers: expect.objectContaining({ ApiKey: 'preserved-key' }),
+      }),
+    );
+  });
+
   it('returns empty list when there are no matching scenes', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

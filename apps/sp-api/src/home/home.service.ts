@@ -117,8 +117,7 @@ const DEFAULT_HOME_RAILS: Array<{
   {
     key: HomeRailKey.RECENTLY_ADDED_LIBRARY,
     title: 'Recently Added to Library',
-    subtitle:
-      'Fresh scenes from the indexed local-library projection.',
+    subtitle: 'Fresh scenes from the indexed local-library projection.',
     enabled: true,
     sortOrder: 2,
     source: HomeRailSource.STASH,
@@ -391,7 +390,11 @@ export class HomeService {
     rail: HomeRail,
   ): Promise<HomeRailContentDto> {
     let stashdbConfig: { baseUrl: string; apiKey?: string | null };
-    let stashConfig: { baseUrl: string; apiKey?: string | null };
+    let stashConfig: {
+      baseUrl: string;
+      apiKey?: string | null;
+      browserUrl?: string | null;
+    };
 
     try {
       stashdbConfig = await this.getRequiredCatalogConfig();
@@ -413,11 +416,7 @@ export class HomeService {
       };
     }
 
-    const config = this.normalizeSceneRailConfig(
-      'HYBRID',
-      rail.config,
-      null,
-    );
+    const config = this.normalizeSceneRailConfig('HYBRID', rail.config, null);
 
     try {
       const matchedScenes = await this.hybridScenesService.getHybridSceneFeed(
@@ -1168,6 +1167,7 @@ export class HomeService {
 
   private async getRequiredStashConfig(): Promise<{
     baseUrl: string;
+    browserUrl?: string | null;
     apiKey?: string | null;
   }> {
     const integration = await this.prisma.integrationConfig.findUnique({
@@ -1193,6 +1193,7 @@ export class HomeService {
 
     return {
       baseUrl,
+      ...(integration.browserUrl ? { browserUrl: integration.browserUrl } : {}),
       apiKey: integration.apiKey,
     };
   }

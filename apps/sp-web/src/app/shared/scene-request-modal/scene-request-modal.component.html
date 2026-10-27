@@ -46,6 +46,7 @@
           class="close-modal"
           [disabled]="requestSubmitLoading()"
           pButton
+          severity="secondary"
           (click)="closeModal()"
         >
           Close
@@ -74,58 +75,70 @@
           @if (requestOptions()?.settingsNotice; as notice) {
             <p role="status">{{ notice }}</p>
           }
+          @if (requestOptions()?.plannedMessage; as plannedMessage) {
+            <p role="status">{{ plannedMessage }}</p>
+          }
           <form [formGroup]="requestForm" (ngSubmit)="submitRequest()">
-            <label class="field" for="request-root-folder">
-              <span>Root Folder</span>
-              <p-select
-                inputId="request-root-folder"
-                formControlName="rootFolderPath"
-                [options]="rootFolderOptions()"
-                optionLabel="label"
-                optionValue="value"
-                optionDisabled="disabled"
-                [appendTo]="'body'"
-                panelStyleClass="app-overlay-panel app-overlay-panel--comfortable"
-                scrollHeight="16rem"
-                placeholder="Select a root folder"
-                [invalid]="
-                  requestForm.controls.rootFolderPath.touched &&
-                  requestForm.controls.rootFolderPath.invalid
-                "
-              />
-            </label>
-
-            <label class="field" for="request-quality-profile">
-              <span>Quality Profile</span>
-              <p-select
-                inputId="request-quality-profile"
-                formControlName="qualityProfileId"
-                [options]="qualityProfileOptions()"
-                optionLabel="label"
-                optionValue="value"
-                [appendTo]="'body'"
-                panelStyleClass="app-overlay-panel app-overlay-panel--comfortable"
-                scrollHeight="16rem"
-                placeholder="Select a quality profile"
-                [invalid]="
-                  requestForm.controls.qualityProfileId.touched &&
-                  requestForm.controls.qualityProfileId.invalid
-                "
-              />
-            </label>
-
-            <div class="checks">
-              <label class="toggle-field" for="request-monitored">
-                <p-toggleswitch inputId="request-monitored" formControlName="monitored" />
-                <span>Monitored</span>
+            @if (requiresCreationSettings()) {
+              <label class="field" for="request-root-folder">
+                <span>Root Folder</span>
+                <p-select
+                  inputId="request-root-folder"
+                  formControlName="rootFolderPath"
+                  [options]="rootFolderOptions()"
+                  optionLabel="label"
+                  optionValue="value"
+                  optionDisabled="disabled"
+                  [appendTo]="'body'"
+                  panelStyleClass="app-overlay-panel app-overlay-panel--comfortable"
+                  scrollHeight="16rem"
+                  placeholder="Select a root folder"
+                  [invalid]="
+                    requestForm.controls.rootFolderPath.touched &&
+                    requestForm.controls.rootFolderPath.invalid
+                  "
+                />
+                <small>{{
+                  defaultSourceLabel(requestOptions()?.defaultSources?.rootFolderPath)
+                }}</small>
               </label>
+
+              <label class="field" for="request-quality-profile">
+                <span>Quality Profile</span>
+                <p-select
+                  inputId="request-quality-profile"
+                  formControlName="qualityProfileId"
+                  [options]="qualityProfileOptions()"
+                  optionLabel="label"
+                  optionValue="value"
+                  [appendTo]="'body'"
+                  panelStyleClass="app-overlay-panel app-overlay-panel--comfortable"
+                  scrollHeight="16rem"
+                  placeholder="Select a quality profile"
+                  [invalid]="
+                    requestForm.controls.qualityProfileId.touched &&
+                    requestForm.controls.qualityProfileId.invalid
+                  "
+                />
+                <small>{{
+                  defaultSourceLabel(requestOptions()?.defaultSources?.qualityProfileId)
+                }}</small>
+              </label>
+            }
+            <div class="checks">
+              @if (requiresCreationSettings()) {
+                <label class="toggle-field" for="request-monitored">
+                  <p-toggleswitch inputId="request-monitored" formControlName="monitored" />
+                  <span>Monitored</span>
+                </label>
+              }
               <label class="toggle-field" for="request-search-now">
                 <p-toggleswitch inputId="request-search-now" formControlName="searchForMovie" />
                 <span>Search Immediately</span>
               </label>
             </div>
 
-            @if (tagOptions().length > 0) {
+            @if (requiresCreationSettings() && tagOptions().length > 0) {
               <label class="field" for="request-tags">
                 <span>Tags</span>
                 <p-multiselect
@@ -169,6 +182,7 @@
                 class="secondary"
                 [disabled]="requestSubmitLoading()"
                 pButton
+                severity="secondary"
                 text
                 (click)="closeModal()"
               >

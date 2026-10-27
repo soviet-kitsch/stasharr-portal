@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -35,12 +36,16 @@ import { RuntimeHealthService } from '../runtime-health/runtime-health.service';
 import { RuntimeHealthResponse } from '../runtime-health/runtime-health.types';
 import { runtimeHealthServiceForIntegration } from './integration-runtime-health.util';
 import { UpdateIntegrationDto } from './dto/update-integration.dto';
+import { normalizeBrowserUrl } from './browser-url.util';
 
 type PersistedIntegrationValues = {
   enabled: boolean;
   name: string | null;
   baseUrl: string | null;
   apiKey: string | null;
+  browserUrl: string | null;
+  defaultRootFolderPath: string | null;
+  defaultQualityProfileId: number | null;
 };
 
 type PersistedIntegrationState = {
@@ -79,6 +84,24 @@ export class IntegrationsService {
     });
     const isCatalogProvider = isCatalogProviderIntegrationType(type);
     const persistedValues = this.resolvePersistedValues(type, dto, existing);
+    const presentationOnly =
+      existing &&
+      (dto.browserUrl !== undefined ||
+        dto.defaultRootFolderPath !== undefined ||
+        dto.defaultQualityProfileId !== undefined) &&
+      !this.connectionDetailsChanged(existing, persistedValues) &&
+      (isCatalogProvider || existing.enabled === persistedValues.enabled) &&
+      existing.name === persistedValues.name;
+    if (presentationOnly) {
+      return this.prisma.integrationConfig.update({
+        where: { type },
+        data: {
+          browserUrl: persistedValues.browserUrl,
+          defaultRootFolderPath: persistedValues.defaultRootFolderPath,
+          defaultQualityProfileId: persistedValues.defaultQualityProfileId,
+        },
+      });
+    }
     const configured = this.hasSavedConfig(type, persistedValues);
     const runtimeHealthInvalidated = this.runtimeHealthInvalidatedBySave(
       existing,
@@ -160,6 +183,28 @@ export class IntegrationsService {
     return integration;
   }
 
+  async getWhisparrDefaultOptions() {
+    const integration = await this.findOne(IntegrationType.WHISPARR);
+    if (
+      !integration.enabled ||
+      integration.status !== IntegrationStatus.CONFIGURED ||
+      !integration.baseUrl?.trim()
+    ) {
+      throw new ConflictException(
+        'Connect Whisparr before loading request defaults.',
+      );
+    }
+    const config = {
+      baseUrl: integration.baseUrl.trim(),
+      apiKey: integration.apiKey,
+    };
+    const [rootFolders, qualityProfiles] = await Promise.all([
+      this.whisparrAdapter.getRootFolders(config),
+      this.whisparrAdapter.getQualityProfiles(config),
+    ]);
+    return { rootFolders, qualityProfiles };
+  }
+
   async testIntegration(
     type: IntegrationType,
     dto: UpdateIntegrationDto,
@@ -175,7 +220,10 @@ export class IntegrationsService {
     const selectionConfig = isCatalogProviderIntegrationType(type)
       ? this.catalogProviderSelectionConfig()
       : undefined;
-    const configChanged = this.connectionDetailsChanged(existing, persistedValues);
+    const configChanged = this.connectionDetailsChanged(
+      existing,
+      persistedValues,
+    );
     const runtimeService = runtimeHealthServiceForIntegration(type);
 
     try {
@@ -318,6 +366,9 @@ export class IntegrationsService {
       name: null,
       baseUrl: null,
       apiKey: null,
+      browserUrl: null,
+      defaultRootFolderPath: null,
+      defaultQualityProfileId: null,
       config: Prisma.JsonNull,
       status: IntegrationStatus.NOT_CONFIGURED,
       lastHealthyAt: null,
@@ -400,6 +451,52 @@ export class IntegrationsService {
     dto: UpdateIntegrationDto,
     existing: IntegrationConfig | null,
   ): PersistedIntegrationValues {
+    if (
+      type !== IntegrationType.WHISPARR &&
+      (dto.defaultRootFolderPath !== undefined ||
+        dto.defaultQualityProfileId !== undefined)
+    ) {
+      throw new BadRequestException('Request defaults apply only to Whisparr.');
+    }
+    const browserInput = dto.browserUrl?.trim() ?? null;
+    const browserUrl =
+      dto.browserUrl === undefined
+        ? (existing?.browserUrl ?? null)
+        : browserInput
+          ? normalizeBrowserUrl(browserInput)
+          : null;
+    if (browserInput && !browserUrl) {
+      throw new BadRequestException(
+        'Browser URL must use HTTP or HTTPS without credentials, query parameters or a fragment.',
+      );
+    }
+    const defaultRootFolderPath =
+      dto.defaultRootFolderPath === undefined
+        ? (existing?.defaultRootFolderPath ?? null)
+        : dto.defaultRootFolderPath?.trim() || null;
+    if (
+      defaultRootFolderPath &&
+      (!/^(\/|[A-Za-z]:[\\/]|\\\\)/.test(defaultRootFolderPath) ||
+        /[\u0000-\u001f\u007f]/.test(defaultRootFolderPath))
+    ) {
+      throw new BadRequestException(
+        'Default root folder must be an absolute path without control characters.',
+      );
+    }
+    const defaultQualityProfileId =
+      dto.defaultQualityProfileId === undefined
+        ? (existing?.defaultQualityProfileId ?? null)
+        : dto.defaultQualityProfileId;
+    if (
+      defaultQualityProfileId !== null &&
+      (!Number.isSafeInteger(defaultQualityProfileId) ||
+        defaultQualityProfileId < 1 ||
+        defaultQualityProfileId > 2147483647)
+    ) {
+      throw new BadRequestException(
+        'Default quality profile must be a positive integer.',
+      );
+    }
     return {
       enabled: isCatalogProviderIntegrationType(type)
         ? true
@@ -407,6 +504,9 @@ export class IntegrationsService {
       name: this.mergeNormalizedInput(existing?.name, dto.name),
       baseUrl: this.mergeNormalizedInput(existing?.baseUrl, dto.baseUrl),
       apiKey: this.mergeNormalizedInput(existing?.apiKey, dto.apiKey),
+      browserUrl,
+      defaultRootFolderPath,
+      defaultQualityProfileId,
     };
   }
 
@@ -415,7 +515,11 @@ export class IntegrationsService {
     values: PersistedIntegrationValues,
     configured: boolean,
   ): PersistedIntegrationState {
-    if (!configured || !existing || this.connectionDetailsChanged(existing, values)) {
+    if (
+      !configured ||
+      !existing ||
+      this.connectionDetailsChanged(existing, values)
+    ) {
       return {
         status: IntegrationStatus.NOT_CONFIGURED,
         lastHealthyAt: null,
@@ -452,7 +556,10 @@ export class IntegrationsService {
       create: createData,
     } satisfies Prisma.IntegrationConfigUpsertArgs;
 
-    if (isCatalogProviderIntegrationType(type) && this.hasSavedConfig(type, state)) {
+    if (
+      isCatalogProviderIntegrationType(type) &&
+      this.hasSavedConfig(type, state)
+    ) {
       const [, integration] = await this.prisma.$transaction([
         this.prisma.integrationConfig.updateMany({
           where: {
@@ -537,7 +644,9 @@ export class IntegrationsService {
   ): Promise<void> {
     switch (type) {
       case IntegrationType.STASH:
-        await this.stashAdapter.probeConnection(config as StashAdapterBaseConfig);
+        await this.stashAdapter.probeConnection(
+          config as StashAdapterBaseConfig,
+        );
         return;
       case IntegrationType.STASHDB:
       case IntegrationType.FANSDB:

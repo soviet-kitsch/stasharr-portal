@@ -1,9 +1,11 @@
 # Stasharr
 
+This fork is maintained at [soviet-kitsch/stasharr-portal](https://github.com/soviet-kitsch/stasharr-portal), based on [enymawse/stasharr-portal](https://github.com/enymawse/stasharr-portal). It includes acquisition recovery/history, discovery filters, browser URLs for connected services, request defaults and list-position restoration. See [the fork build and release pipeline](docs/fork-pipeline.md) for tested images, immutable tags, upstream integration and deployment.
+
 Stasharr is a self-hosted console that discovers scenes from a supported catalog provider, sends acquisitions to Whisparr, and validates availability against your local Stash library.
 
 [![Latest release](https://img.shields.io/github/v/release/enymawse/stasharr-portal?display_name=tag&sort=semver&style=for-the-badge)](https://github.com/enymawse/stasharr-portal/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/enymawse/stasharr-portal/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/enymawse/stasharr-portal/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/soviet-kitsch/stasharr-portal/ci.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/soviet-kitsch/stasharr-portal/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/enymawse/stasharr-portal?&style=for-the-badge)](LICENSE)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-0f766e?&style=for-the-badge)](#self-hosted-quick-start)
 [![Deploy: Docker Compose](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white&style=for-the-badge)](#self-hosted-quick-start)

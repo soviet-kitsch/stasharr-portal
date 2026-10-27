@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RequestsService } from './requests.service';
 import { RequestOperationsService } from './request-operations.service';
 
 // Transactional memory double. A separate PostgreSQL check exercises the actual
@@ -97,6 +98,54 @@ function database() {
     },
   } as unknown as PrismaService;
   return { prisma, rows, actions };
+}
+
+function resumeFixture(db: ReturnType<typeof database>) {
+  const whis = {
+    findMovieByStashId: jest
+      .fn()
+      .mockResolvedValue({ movieId: 42, stashId: 'scene', hasFile: false }),
+    getQueueSnapshot: jest.fn().mockResolvedValue([]),
+    getSearchCommands: jest.fn().mockResolvedValue([]),
+    searchMovie: jest.fn().mockResolvedValue({ commandId: 9 }),
+    createMovie: jest.fn(),
+  };
+  const index = {
+    seedRequestedScene: jest.fn().mockResolvedValue(undefined),
+    requestImmediateRefresh: jest.fn().mockResolvedValue(undefined),
+    refreshRequestRow: jest.fn().mockResolvedValue(undefined),
+  };
+  const operations = new RequestOperationsService(db.prisma);
+  const service = new RequestsService(
+    index as never,
+    {
+      findOne: jest.fn().mockResolvedValue({
+        enabled: true,
+        status: 'CONFIGURED',
+        baseUrl: 'http://fixture.invalid',
+        apiKey: null,
+      }),
+    } as never,
+    {
+      getConfiguredCatalogProvider: jest.fn().mockResolvedValue({
+        providerKey: 'STASHDB',
+        baseUrl: 'http://fixture.invalid',
+        apiKey: null,
+      }),
+    } as never,
+    whis as never,
+    {
+      getSceneById: jest.fn().mockResolvedValue({
+        id: 'scene',
+        title: 'Example',
+        studioName: 'Studio',
+      }),
+    } as never,
+    db.prisma,
+    operations,
+    { findScenesByStashId: jest.fn().mockResolvedValue([]) } as never,
+  );
+  return { service, whis };
 }
 
 describe('RequestOperationsService', () => {
@@ -248,5 +297,117 @@ describe('RequestOperationsService', () => {
       expect(db.rows.get('scene')?.activeActionId).toBe('one');
       return {};
     });
+  });
+  it('records each new active-job resume intent while replaying the same key without repeating work', async () => {
+    const db = database();
+    const f = resumeFixture(db);
+    f.whis.getQueueSnapshot.mockResolvedValue([
+      { movieId: 42, status: 'downloading' },
+    ] as never);
+    const dto = {
+      monitored: true,
+      searchForMovie: true,
+      tags: [],
+      operationKey: 'resume-one',
+    };
+    const first = await f.service.submitSceneRequest(
+      'scene',
+      dto,
+      'RE_REQUEST',
+    );
+    expect(first.outcome).toBe('ALREADY_QUEUED');
+    expect(db.actions.get('resume-one')).toMatchObject({
+      kind: 'RE_REQUEST',
+      state: 'SUCCEEDED',
+      result: { outcome: 'ALREADY_QUEUED' },
+    });
+    const lookups = f.whis.findMovieByStashId.mock.calls.length;
+    expect(
+      await f.service.submitSceneRequest('scene', dto, 'RE_REQUEST'),
+    ).toEqual(first);
+    expect(f.whis.findMovieByStashId).toHaveBeenCalledTimes(lookups);
+    await f.service.submitSceneRequest(
+      'scene',
+      { ...dto, operationKey: 'resume-two' },
+      'RE_REQUEST',
+    );
+    expect(db.actions.size).toBe(2);
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+  });
+
+  it('does not redispatch a successful resume search when a client replays its key', async () => {
+    const db = database();
+    const f = resumeFixture(db);
+    const dto = {
+      monitored: true,
+      searchForMovie: true,
+      tags: [],
+      operationKey: 'resume-search',
+    };
+    expect(
+      await f.service.submitSceneRequest('scene', dto, 'RE_REQUEST'),
+    ).toMatchObject({ outcome: 'SEARCH_STARTED', commandId: 9 });
+    expect(
+      await f.service.submitSceneRequest('scene', dto, 'RE_REQUEST'),
+    ).toMatchObject({ outcome: 'SEARCH_STARTED', commandId: 9 });
+    expect(f.whis.searchMovie).toHaveBeenCalledTimes(1);
+    expect(db.actions.get('resume-search')).toMatchObject({
+      details: { operation: 'SEARCH_MOVIE', movieId: 42 },
+      state: 'SUCCEEDED',
+    });
+  });
+
+  it('keeps a timed-out resume search claimed across restart until native command evidence confirms it', async () => {
+    const db = database();
+    const f = resumeFixture(db);
+    f.whis.searchMovie.mockRejectedValue(new Error('response lost'));
+    await expect(
+      f.service.submitSceneRequest(
+        'scene',
+        {
+          monitored: true,
+          searchForMovie: true,
+          tags: [],
+          operationKey: 'uncertain-resume',
+        },
+        'RE_REQUEST',
+      ),
+    ).rejects.toThrow('may have reached');
+    expect(db.actions.get('uncertain-resume')).toMatchObject({
+      state: 'UNCERTAIN',
+      details: { operation: 'SEARCH_MOVIE', movieId: 42 },
+    });
+    const restarted = resumeFixture(db);
+    await expect(
+      restarted.service.submitSceneRequest(
+        'scene',
+        {
+          monitored: true,
+          searchForMovie: true,
+          tags: [],
+          operationKey: 'new-key',
+        },
+        'RE_REQUEST',
+      ),
+    ).rejects.toThrow('Another action');
+    await expect(restarted.service.checkOutcome('scene')).rejects.toThrow(
+      'still unknown',
+    );
+    expect(db.rows.get('scene')?.activeActionId).toBe('uncertain-resume');
+    restarted.whis.getSearchCommands.mockResolvedValue([
+      {
+        id: 10,
+        movieIds: [42],
+        status: 'completed',
+        queuedAt: new Date().toISOString(),
+      },
+    ]);
+    expect(await restarted.service.checkOutcome('scene')).toMatchObject({
+      outcome: 'SEARCH_CONFIRMED',
+      commandId: 10,
+    });
+    expect(db.rows.get('scene')?.activeActionId).toBeNull();
+    expect(restarted.whis.searchMovie).not.toHaveBeenCalled();
   });
 });

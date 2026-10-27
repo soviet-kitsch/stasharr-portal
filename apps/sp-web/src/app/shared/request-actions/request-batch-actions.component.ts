@@ -1,6 +1,8 @@
-import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
+import { ButtonDirective } from 'primeng/button';
+import { requestOutcomeMessage } from './request-outcome';
 import { Dialog } from 'primeng/dialog';
 import { SubmitSceneRequestPayload } from '../../core/api/discover.types';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
@@ -11,18 +13,23 @@ interface Row {
   eligible?: boolean;
   ok?: boolean;
   message?: string;
-  result?: { outcome?: string; alreadyExists?: boolean };
+  plannedAction?: string;
+  requiresSettings?: boolean;
+  result?: { outcome?: string; alreadyExists?: boolean; message?: string };
 }
 
 @Component({
   selector: 'app-request-batch-actions',
-  imports: [Dialog, SceneRequestModalComponent],
+  imports: [ButtonDirective, Dialog, SceneRequestModalComponent],
   styleUrl: './request-actions.component.scss',
   template: `
     @if (scenes.length) {
-      <div class="app-action-row" role="region" aria-label="Selected requests">
+      <div class="app-action-row batch-actions" role="region" aria-label="Selected requests">
         <span>{{ scenes.length }} selected (maximum 20)</span>
         <button
+          pButton
+          size="small"
+          severity="secondary"
           type="button"
           class="secondary-action"
           [disabled]="busy()"
@@ -31,6 +38,9 @@ interface Row {
           Re-request selected
         </button>
         <button
+          pButton
+          size="small"
+          severity="secondary"
           type="button"
           class="secondary-action"
           [disabled]="busy()"
@@ -39,6 +49,9 @@ interface Row {
           Search selected
         </button>
         <button
+          pButton
+          size="small"
+          severity="secondary"
           type="button"
           class="secondary-action"
           [disabled]="busy()"
@@ -49,10 +62,13 @@ interface Row {
       </div>
     }
     <p-dialog
+      styleClass="app-review-dialog"
       header="Review selected requests"
       [visible]="open()"
       (visibleChange)="close($event)"
       [modal]="true"
+      [blockScroll]="true"
+      [appendTo]="'body'"
       [closable]="!busy()"
       [closeOnEscape]="!busy()"
       [style]="{ width: '44rem', maxWidth: '95vw' }"
@@ -63,7 +79,7 @@ interface Row {
             ? 'Remove eligible requests from Portal only. Whisparr entries, downloads and files remain unchanged.'
             : kind() === 'SEARCH'
               ? 'Start one search per eligible entry. Existing monitoring settings remain unchanged.'
-              : 'Re-request eligible scenes only if still missing. The reviewed settings will apply to every new entry in this selection.'
+              : 'Resume each acquisition using the reviewed plan. Existing entries keep their settings. Creation settings apply only to entries that are still missing.'
         }}
       </p>
       @if (busy()) {
@@ -73,15 +89,7 @@ interface Row {
         <p>
           <strong>{{ title(row.id) }}</strong
           >:
-          {{
-            completed()
-              ? row.ok
-                ? 'Completed'
-                : 'Not completed'
-              : row.eligible
-                ? 'Eligible'
-                : 'Skipped'
-          }}
+          {{ completed() ? resultStatus(row) : row.eligible ? 'Eligible' : 'Skipped' }}
           — {{ row.message ?? outcome(row) }}
         </p>
       }
@@ -89,27 +97,39 @@ interface Row {
         <p role="alert">{{ error() }}</p>
       }
       @if (!completed()) {
-        @if (kind() === 'RE_REQUEST' && eligibleIds().length) {
-          <button type="button" [disabled]="busy()" (click)="settingsOpen.set(true)">
+        @if (kind() === 'RE_REQUEST' && requiresSettings()) {
+          <button
+            pButton
+            severity="secondary"
+            type="button"
+            [disabled]="busy()"
+            (click)="settingsOpen.set(true)"
+          >
             {{ settings() ? 'Review settings again' : 'Choose acquisition settings' }}
           </button>
         }
         <button
+          pButton
+          [severity]="kind() === 'DISMISS' ? 'danger' : 'primary'"
           type="button"
-          [disabled]="busy() || !eligibleIds().length || (kind() === 'RE_REQUEST' && !settings())"
+          [disabled]="
+            busy() ||
+            !eligibleIds().length ||
+            (kind() === 'RE_REQUEST' && requiresSettings() && !settings())
+          "
           (click)="confirm()"
         >
           Confirm {{ eligibleIds().length }}
           {{ kind() === 'DISMISS' ? 'deletions from Portal' : 'actions' }}
         </button>
       }
-      <button type="button" [disabled]="busy()" (click)="close(false)">
+      <button pButton severity="secondary" type="button" [disabled]="busy()" (click)="close(false)">
         {{ completed() ? 'Done' : 'Cancel' }}
       </button>
     </p-dialog>
     <app-scene-request-modal
       [open]="settingsOpen()"
-      [sceneId]="eligibleIds().length ? eligibleIds()[0] : null"
+      [sceneId]="settingsSceneId()"
       sceneTitle="Settings for all eligible selected requests"
       [settingsOnly]="true"
       (settingsSelected)="settings.set($event)"
@@ -130,15 +150,37 @@ export class RequestBatchActionsComponent {
   protected readonly settingsOpen = signal(false);
   protected readonly settings = signal<SubmitSceneRequestPayload | null>(null);
   protected readonly eligibleIds = signal<string[]>([]);
+  protected readonly requiresSettings = computed(() =>
+    this.rows().some((row) => row.eligible && row.requiresSettings !== false),
+  );
+  protected readonly settingsSceneId = computed(
+    () => this.rows().find((row) => row.eligible && row.requiresSettings !== false)?.id ?? null,
+  );
   private key = '';
   private reviewedScenes: Array<{ id: string; title: string }> = [];
   protected title(id: string) {
     return this.reviewedScenes.find((scene) => scene.id === id)?.title ?? id;
   }
+  protected resultStatus(row: Row): string {
+    if (!row.ok) return 'Not completed';
+    if (
+      ['NEEDS_IDENTIFICATION', 'IMPORT_PENDING', 'UPSTREAM_BLOCKED'].includes(
+        row.result?.outcome ?? '',
+      )
+    )
+      return 'Needs review';
+    if (['ALREADY_QUEUED', 'ALREADY_SEARCHING'].includes(row.result?.outcome ?? ''))
+      return 'Active';
+    if (row.result?.outcome === 'ALREADY_AVAILABLE') return 'Available';
+    return 'Completed';
+  }
+
   protected outcome(row: Row) {
-    return row.result?.alreadyExists
-      ? 'Already present; no duplicate was sent.'
-      : (row.result?.outcome?.replaceAll('_', ' ').toLowerCase() ?? '');
+    return (
+      row.result?.message ||
+      requestOutcomeMessage(row.result?.outcome) ||
+      (row.result?.alreadyExists ? 'Already present; no duplicate was sent.' : '')
+    );
   }
 
   protected preview(kind: Kind): void {
@@ -173,7 +215,7 @@ export class RequestBatchActionsComponent {
     if (
       this.busy() ||
       !this.eligibleIds().length ||
-      (this.kind() === 'RE_REQUEST' && !this.settings())
+      (this.kind() === 'RE_REQUEST' && this.requiresSettings() && !this.settings())
     )
       return;
     this.busy.set(true);

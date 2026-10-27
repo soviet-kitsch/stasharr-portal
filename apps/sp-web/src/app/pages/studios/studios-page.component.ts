@@ -20,6 +20,7 @@ import { ToggleSwitch } from 'primeng/toggleswitch';
 import { DiscoverService } from '../../core/api/discover.service';
 import { AppNotificationsService } from '../../core/notifications/app-notifications.service';
 import { SortDirection, StudioFeedItem, StudioFeedSort } from '../../core/api/discover.types';
+import { FeedState, injectFeedStateMemory } from '../../core/navigation/feed-state-memory';
 
 @Component({
   selector: 'app-studios-page',
@@ -55,6 +56,12 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly notifications = inject(AppNotificationsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly feedMemory = injectFeedStateMemory<FeedState<StudioFeedItem>>(() => ({
+    items: this.items(),
+    page: this.page(),
+    total: this.total(),
+    hasMore: this.hasMore(),
+  }));
   private readonly nameFilterTerms = new Subject<string>();
   private nameFilterSubscription: Subscription | null = null;
   private queryParamSubscription: Subscription | null = null;
@@ -148,11 +155,7 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   protected onSortChanged(nextValue: string): void {
-    if (
-      nextValue === 'NAME' ||
-      nextValue === 'CREATED_AT' ||
-      nextValue === 'UPDATED_AT'
-    ) {
+    if (nextValue === 'NAME' || nextValue === 'CREATED_AT' || nextValue === 'UPDATED_AT') {
       if (this.selectedSort() === nextValue) {
         return;
       }
@@ -251,9 +254,7 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
             return;
           }
 
-          this.notifications.success(
-            nextFavorite ? 'Studio favorited' : 'Studio unfavorited',
-          );
+          this.notifications.success(nextFavorite ? 'Studio favorited' : 'Studio unfavorited');
         },
         error: () => {
           this.notifications.error(
@@ -361,7 +362,11 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
       const urlState = this.readUrlState(queryParamMap);
       const changed = this.applyUrlState(urlState);
       if (!this.hasHydratedFromUrl || changed) {
+        const isInitialHydration = !this.hasHydratedFromUrl;
         this.hasHydratedFromUrl = true;
+        if (isInitialHydration && this.restoreSavedFeed()) {
+          return;
+        }
         this.resetFeedAndReload();
         return;
       }
@@ -380,9 +385,7 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const sortParam = queryParamMap.get('sort');
     const sort: StudioFeedSort =
-      sortParam === 'NAME' ||
-      sortParam === 'CREATED_AT' ||
-      sortParam === 'UPDATED_AT'
+      sortParam === 'NAME' || sortParam === 'CREATED_AT' || sortParam === 'UPDATED_AT'
         ? sortParam
         : StudiosPageComponent.DEFAULT_SORT;
     const directionParam = queryParamMap.get('dir');
@@ -429,10 +432,7 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const normalizedName = this.nameFilter().trim();
     const next = {
       q: normalizedName.length > 0 ? normalizedName : null,
-      sort:
-        this.selectedSort() === StudiosPageComponent.DEFAULT_SORT
-          ? null
-          : this.selectedSort(),
+      sort: this.selectedSort() === StudiosPageComponent.DEFAULT_SORT ? null : this.selectedSort(),
       dir:
         this.selectedDirection() === StudiosPageComponent.DEFAULT_DIRECTION
           ? null
@@ -458,6 +458,20 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
+  private restoreSavedFeed(): boolean {
+    const saved = this.feedMemory.restore();
+    if (!saved) {
+      return false;
+    }
+
+    this.feedVersion += 1;
+    this.items.set([...saved.items]);
+    this.page.set(saved.page);
+    this.total.set(saved.total);
+    this.hasMore.set(saved.hasMore);
+    return true;
+  }
+
   private resetFeedAndReload(): void {
     this.feedVersion += 1;
     this.pendingReload = false;
@@ -480,10 +494,7 @@ export class StudiosPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private setupNameFilterDebounce(): void {
     this.nameFilterSubscription = this.nameFilterTerms
-      .pipe(
-        debounceTime(StudiosPageComponent.NAME_FILTER_DEBOUNCE_MS),
-        distinctUntilChanged(),
-      )
+      .pipe(debounceTime(StudiosPageComponent.NAME_FILTER_DEBOUNCE_MS), distinctUntilChanged())
       .subscribe(() => {
         this.resetFeedAndReload();
       });

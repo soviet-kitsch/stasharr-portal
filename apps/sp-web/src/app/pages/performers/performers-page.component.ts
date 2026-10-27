@@ -1,4 +1,9 @@
 import {
+  FeedState,
+  FeedStateCache,
+  injectFeedStateMemory,
+} from '../../core/navigation/feed-state-memory';
+import {
   AfterViewInit,
   Component,
   ElementRef,
@@ -111,6 +116,13 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
   private readonly notifications = inject(AppNotificationsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly feedStateCache = inject(FeedStateCache);
+  private readonly feedMemory = injectFeedStateMemory<FeedState<PerformerFeedItem>>(() => ({
+    items: this.items(),
+    page: this.page(),
+    total: this.total(),
+    hasMore: this.hasMore(),
+  }));
   private readonly nameFilterTerms = new Subject<string>();
   private readonly studioSearchTerms = new Subject<string>();
   private studioSearchSubscription: Subscription | null = null;
@@ -519,7 +531,9 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
       const urlState = this.readUrlState(queryParamMap);
       const changed = this.applyUrlState(urlState);
       if (!this.hasHydratedFromUrl || changed) {
+        const isInitialHydration = !this.hasHydratedFromUrl;
         this.hasHydratedFromUrl = true;
+        if (isInitialHydration && this.restoreSavedFeed()) return;
         this.resetFeedAndReload();
         return;
       }
@@ -638,6 +652,17 @@ export class PerformersPageComponent implements OnInit, AfterViewInit, OnDestroy
       queryParamsHandling: 'merge',
       replaceUrl,
     });
+  }
+
+  private restoreSavedFeed(): boolean {
+    const saved = this.feedMemory.restore();
+    if (!saved) return false;
+    this.feedVersion += 1;
+    this.items.set([...saved.items]);
+    this.page.set(saved.page);
+    this.total.set(saved.total);
+    this.hasMore.set(saved.hasMore);
+    return true;
   }
 
   private resetFeedAndReload(): void {

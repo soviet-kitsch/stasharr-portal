@@ -29,6 +29,34 @@ label {
   gap: 0.4rem;
 }
 
+small {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+select,
+button {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0.5rem 0.62rem;
+}
+
+select {
+  width: 100%;
+  min-width: 0;
+}
+
 :host ::ng-deep .integration-inline-message {
   margin: 0;
 }

@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  appendBrowserPath,
+  integrationBrowserBaseUrl,
+  normalizeBrowserUrl,
+} from '../integrations/browser-url.util';
+import {
   LibrarySceneFeedItemDto,
   LibraryScenesFeedDto,
 } from './dto/library-scenes-feed.dto';
@@ -65,7 +70,7 @@ export class LibrarySceneQueryService {
       normalizedFilters.sort,
       normalizedFilters.direction,
     );
-    const [rows, aggregate] = await Promise.all([
+    const [rows, aggregate, browserBase] = await Promise.all([
       this.prisma.librarySceneIndex.findMany({
         where,
         orderBy,
@@ -82,6 +87,7 @@ export class LibrarySceneQueryService {
           lastSyncedAt: true,
         },
       }),
+      this.getBrowserBaseUrl(),
     ]);
     const total = aggregate._count._all;
 
@@ -91,7 +97,7 @@ export class LibrarySceneQueryService {
       perPage,
       hasMore: page * perPage < total,
       latestSyncAt: aggregate._max.lastSyncedAt,
-      items: rows.map((row) => this.toSceneFeedItem(row)),
+      items: rows.map((row) => this.toSceneFeedItem(row, browserBase)),
     };
   }
 
@@ -110,7 +116,8 @@ export class LibrarySceneQueryService {
       select: librarySceneListSelect,
     });
 
-    return rows.map((row) => this.toSceneFeedItem(row));
+    const browserBase = await this.getBrowserBaseUrl();
+    return rows.map((row) => this.toSceneFeedItem(row, browserBase));
   }
 
   private normalizeFilters(
@@ -229,6 +236,7 @@ export class LibrarySceneQueryService {
 
   private toSceneFeedItem(
     row: LibrarySceneListRow,
+    browserBase: string | null,
   ): LibrarySceneFeedItemDto {
     const screenshotUrl = row.imageUrl
       ? `/api/media/stash/scenes/${encodeURIComponent(row.stashSceneId)}/screenshot`
@@ -254,8 +262,20 @@ export class LibrarySceneQueryService {
       localCreatedAt: row.localCreatedAt,
       type: 'SCENE',
       source: 'STASH',
-      viewUrl: row.viewUrl,
+      viewUrl: browserBase
+        ? (appendBrowserPath(
+            browserBase,
+            `scenes/${encodeURIComponent(row.stashSceneId)}`,
+          ) ?? '')
+        : (normalizeBrowserUrl(row.viewUrl) ?? ''),
     };
+  }
+
+  private async getBrowserBaseUrl(): Promise<string | null> {
+    const integration = await this.prisma.integrationConfig.findUnique({
+      where: { type: 'STASH' },
+    });
+    return integration ? integrationBrowserBaseUrl(integration) : null;
   }
 
   private normalizeIds(values: string[]): string[] {

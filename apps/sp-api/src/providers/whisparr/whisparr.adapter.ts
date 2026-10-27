@@ -2,6 +2,10 @@ import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { RuntimeHealthServiceKey } from '@prisma/client';
 import { RuntimeHealthService } from '../../runtime-health/runtime-health.service';
 import { fetchWithTimeout } from '../fetch-with-timeout';
+import {
+  appendBrowserPath,
+  integrationBrowserBaseUrl,
+} from '../../integrations/browser-url.util';
 
 export interface WhisparrAdapterBaseConfig {
   baseUrl: string;
@@ -12,6 +16,8 @@ export interface WhisparrMovieLookupResult {
   movieId: number;
   stashId: string;
   hasFile: boolean;
+  filePath?: string | null;
+  fileSize?: number | null;
 }
 
 export interface WhisparrQueueSnapshotItem {
@@ -589,11 +595,13 @@ export class WhisparrAdapter {
   }
 
   buildSceneViewUrl(baseUrl: string, movieId: number): string {
-    const parsed = new URL(baseUrl);
-    const cleanPath = parsed.pathname.replace(/\/+$/, '');
-    parsed.pathname = `${cleanPath}/movie/${encodeURIComponent(String(movieId))}`;
-    parsed.search = '';
-    return parsed.toString();
+    const browserBase = integrationBrowserBaseUrl({ baseUrl });
+    return browserBase
+      ? (appendBrowserPath(
+          browserBase,
+          `movie/${encodeURIComponent(String(movieId))}`,
+        ) ?? '')
+      : '';
   }
 
   private async fetchArrayPayload(
@@ -710,10 +718,25 @@ export class WhisparrAdapter {
       return null;
     }
 
+    const file = (entry as Record<string, unknown>).movieFile;
+    const movieFile =
+      file && typeof file === 'object' && !Array.isArray(file)
+        ? (file as Record<string, unknown>)
+        : {};
+    const filePath = this.readString(movieFile.path);
+    const fileSize =
+      typeof movieFile.size === 'number' &&
+      Number.isSafeInteger(movieFile.size) &&
+      movieFile.size > 0
+        ? movieFile.size
+        : null;
+
     return {
       movieId,
       stashId,
       hasFile: (entry as Record<string, unknown>).hasFile === true,
+      ...(filePath ? { filePath } : {}),
+      ...(fileSize ? { fileSize } : {}),
     };
   }
 

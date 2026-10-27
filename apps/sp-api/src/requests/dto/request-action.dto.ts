@@ -10,7 +10,7 @@ import {
   IsUUID,
   ValidateNested,
 } from 'class-validator';
-import { SubmitSceneRequestDto } from './submit-scene-request.dto';
+import { ResumeSceneRequestDto } from './resume-scene-request.dto';
 
 export class RequestActionDto {
   @IsUUID()
@@ -30,6 +30,6 @@ export class BatchRequestActionDto extends RequestActionDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => SubmitSceneRequestDto)
-  settings?: SubmitSceneRequestDto;
+  @Type(() => ResumeSceneRequestDto)
+  settings?: ResumeSceneRequestDto;
 }

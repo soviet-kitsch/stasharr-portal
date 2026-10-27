@@ -8,9 +8,14 @@ import {
 } from '../catalog/catalog-provider.util';
 import { RuntimeHealthService } from '../../runtime-health/runtime-health.service';
 import { fetchWithTimeout } from '../fetch-with-timeout';
+import {
+  appendBrowserPath,
+  integrationBrowserBaseUrl,
+} from '../../integrations/browser-url.util';
 
 export interface StashAdapterBaseConfig {
   baseUrl: string;
+  browserUrl?: string | null;
   apiKey?: string | null;
 }
 
@@ -308,7 +313,7 @@ export class StashAdapter {
       .map((scene) =>
         this.toSceneMatch(
           scene,
-          config.baseUrl,
+          integrationBrowserBaseUrl(config) ?? config.baseUrl,
           normalizedStashId,
           overlays?.providerKey ?? null,
         ),
@@ -381,7 +386,12 @@ export class StashAdapter {
     return {
       total,
       items: scenes
-        .map((scene) => this.toLocalSceneFeedItem(scene, config.baseUrl))
+        .map((scene) =>
+          this.toLocalSceneFeedItem(
+            scene,
+            integrationBrowserBaseUrl(config) ?? config.baseUrl,
+          ),
+        )
         .filter((scene): scene is StashLocalSceneFeedItem => scene !== null),
     };
   }
@@ -519,7 +529,7 @@ export class StashAdapter {
         .map((scene) =>
           this.toLocalLibrarySceneItem(
             scene,
-            config.baseUrl,
+            integrationBrowserBaseUrl(config) ?? config.baseUrl,
             activeCatalogProviderKey ?? null,
           ),
         )
@@ -1333,11 +1343,17 @@ export class StashAdapter {
     return parsed.toString();
   }
 
+  buildSceneViewUrl(baseUrl: string, sceneId: string): string {
+    const browserBase = integrationBrowserBaseUrl({ baseUrl });
+    return browserBase
+      ? (appendBrowserPath(
+          browserBase,
+          `scenes/${encodeURIComponent(sceneId)}`,
+        ) ?? '')
+      : '';
+  }
+
   private resolveSceneViewUrl(baseUrl: string, sceneId: string): string {
-    const parsed = new URL(baseUrl);
-    const cleanPath = parsed.pathname.replace(/\/+$/, '');
-    parsed.pathname = `${cleanPath}/scenes/${encodeURIComponent(sceneId)}`;
-    parsed.search = '';
-    return parsed.toString();
+    return this.buildSceneViewUrl(baseUrl, sceneId);
   }
 }

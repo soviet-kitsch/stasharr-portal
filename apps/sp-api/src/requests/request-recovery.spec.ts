@@ -77,7 +77,17 @@ function fixture() {
     operations as never,
     stash as never,
   );
-  return { service, index, whis, stash, metadata, db, dispatch, operations };
+  return {
+    service,
+    index,
+    whis,
+    stash,
+    metadata,
+    db,
+    dispatch,
+    operations,
+    config,
+  };
 }
 
 describe('request recovery actions', () => {
@@ -102,13 +112,17 @@ describe('request recovery actions', () => {
     );
   });
 
-  it('reuses an existing Whisparr entry without creating a duplicate or starting another search', async () => {
+  it('resumes a waiting existing Whisparr entry with one guarded search and no duplicate entry', async () => {
     const f = fixture();
     expect(
       await f.service.submitSceneRequest('scene', settings, 'RE_REQUEST'),
     ).toMatchObject({ alreadyExists: true, whisparrMovieId: 42 });
     expect(f.whis.createMovie).not.toHaveBeenCalled();
-    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.whis.searchMovie).toHaveBeenCalledTimes(1);
+    expect(f.dispatch).toHaveBeenCalledWith({
+      operation: 'SEARCH_MOVIE',
+      movieId: 42,
+    });
   });
 
   it('creates only an absent scene, marking dispatch and saving reviewed settings', async () => {
@@ -264,12 +278,16 @@ describe('request recovery actions', () => {
     expect((await validate(dto)).length).toBeGreaterThan(0);
   });
 
-  it('requires explicit settings for a legacy request and restores valid saved settings', async () => {
+  it('uses the sole valid option for a legacy request and restores valid saved settings', async () => {
     const f = fixture();
     f.db.request.findUnique.mockResolvedValue({ settings: null } as never);
     const legacy = await f.service.getRequestOptions('scene');
-    expect(legacy.defaults.rootFolderPath).toBeNull();
-    expect(legacy.defaults.qualityProfileId).toBeNull();
+    expect(legacy.defaults.rootFolderPath).toBe('/data');
+    expect(legacy.defaults.qualityProfileId).toBe(1);
+    expect(legacy.defaultSources).toEqual({
+      rootFolderPath: 'ONLY_OPTION',
+      qualityProfileId: 'ONLY_OPTION',
+    });
     f.db.request.findUnique.mockResolvedValue({
       settings: { ...settings, monitored: false },
     } as never);
@@ -279,5 +297,312 @@ describe('request recovery actions', () => {
       qualityProfileId: 1,
       monitored: false,
     });
+  });
+  it('prefills configured defaults before arbitrary option order, while saved valid values win', async () => {
+    const f = fixture();
+    f.config.findOne.mockResolvedValue({
+      enabled: true,
+      status: 'CONFIGURED',
+      baseUrl: 'http://fixture.invalid',
+      apiKey: 'fixture',
+      defaultRootFolderPath: '/preferred',
+      defaultQualityProfileId: 2,
+    } as never);
+    f.whis.getRootFolders.mockResolvedValue([
+      { path: '/other', accessible: true },
+      { path: '/preferred', accessible: true },
+    ] as never);
+    f.whis.getQualityProfiles.mockResolvedValue([
+      { id: 1 },
+      { id: 2 },
+    ] as never);
+    f.db.request.findUnique.mockResolvedValue({ settings: null } as never);
+    const legacy = await f.service.getRequestOptions('scene');
+    expect(legacy.defaults).toMatchObject({
+      rootFolderPath: '/preferred',
+      qualityProfileId: 2,
+    });
+    expect(legacy.defaultSources).toEqual({
+      rootFolderPath: 'CONFIGURED',
+      qualityProfileId: 'CONFIGURED',
+    });
+    f.db.request.findUnique.mockResolvedValue({
+      settings: { ...settings, rootFolderPath: '/other' },
+    } as never);
+    const saved = await f.service.getRequestOptions('scene');
+    expect(saved.defaults).toMatchObject({
+      rootFolderPath: '/other',
+      qualityProfileId: 1,
+    });
+    expect(saved.defaultSources).toEqual({
+      rootFolderPath: 'SAVED',
+      qualityProfileId: 'SAVED',
+    });
+    const batch = await f.service.getRequestOptions('scene', 'batch');
+    expect(batch.defaults).toMatchObject({
+      rootFolderPath: '/preferred',
+      qualityProfileId: 2,
+    });
+    expect(batch.defaultSources).toEqual({
+      rootFolderPath: 'CONFIGURED',
+      qualityProfileId: 'CONFIGURED',
+    });
+  });
+
+  it('does not choose the first of multiple options when saved or configured defaults are invalid', async () => {
+    const f = fixture();
+    f.config.findOne.mockResolvedValue({
+      enabled: true,
+      status: 'CONFIGURED',
+      baseUrl: 'http://fixture.invalid',
+      apiKey: 'fixture',
+      defaultRootFolderPath: '/unavailable',
+      defaultQualityProfileId: 99,
+    } as never);
+    f.db.request.findUnique.mockResolvedValue({
+      settings: { ...settings, rootFolderPath: '/gone', qualityProfileId: 88 },
+    } as never);
+    f.whis.getRootFolders.mockResolvedValue([
+      { path: '/unavailable', accessible: false },
+      { path: '/a', accessible: true },
+      { path: '/b', accessible: true },
+    ] as never);
+    f.whis.getQualityProfiles.mockResolvedValue([
+      { id: 1 },
+      { id: 2 },
+    ] as never);
+    const options = await f.service.getRequestOptions('scene');
+    expect(options.defaults).toMatchObject({
+      rootFolderPath: null,
+      qualityProfileId: null,
+    });
+    expect(options.defaultSources).toEqual({
+      rootFolderPath: 'REQUIRED',
+      qualityProfileId: 'REQUIRED',
+    });
+  });
+
+  it('does not require creation settings to resume an existing active job', async () => {
+    const f = fixture();
+    f.whis.getQueueSnapshot.mockResolvedValue([
+      { movieId: 42, status: 'downloading' },
+    ] as never);
+    f.whis.getRootFolders.mockResolvedValue([]);
+    f.whis.getQualityProfiles.mockResolvedValue([]);
+    const options = await f.service.getRequestOptions('scene', 'resume');
+    expect(options).toMatchObject({
+      requiresSettings: false,
+      plannedAction: 'ALREADY_QUEUED',
+    });
+    const result = await f.service.submitSceneRequest(
+      'scene',
+      { monitored: true, searchForMovie: true, tags: [] },
+      'RE_REQUEST',
+    );
+    expect(result).toMatchObject({
+      outcome: 'ALREADY_QUEUED',
+      alreadyExists: true,
+    });
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.operations.run).toHaveBeenCalledWith(
+      'scene',
+      expect.any(String),
+      'RE_REQUEST',
+      expect.any(Object),
+      expect.any(Function),
+    );
+  });
+
+  it.each([
+    {
+      queue: [
+        {
+          movieId: 42,
+          trackedDownloadStatus: 'warning',
+          errorMessage: 'Missing destination',
+        },
+      ],
+      outcome: 'UPSTREAM_BLOCKED',
+      message: 'Missing destination',
+    },
+    {
+      queue: [
+        {
+          movieId: 42,
+          status: 'completed',
+          trackedDownloadState: 'importPending',
+        },
+      ],
+      outcome: 'IMPORT_PENDING',
+      message: 'awaiting import',
+    },
+    {
+      queue: [{ movieId: 42, status: 'paused' }],
+      outcome: 'UPSTREAM_BLOCKED',
+      message: 'paused',
+    },
+  ])(
+    'records an existing queue blocker or import condition without dispatch: $outcome',
+    async ({ queue, outcome, message }) => {
+      const f = fixture();
+      f.whis.getQueueSnapshot.mockResolvedValue(queue as never);
+      const result = await f.service.submitSceneRequest(
+        'scene',
+        settings,
+        'RE_REQUEST',
+      );
+      expect(result).toMatchObject({
+        outcome,
+        message: expect.stringContaining(message),
+      });
+      expect(f.whis.createMovie).not.toHaveBeenCalled();
+      expect(f.whis.searchMovie).not.toHaveBeenCalled();
+      expect(f.dispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('records identification guidance rather than redownloading a file already imported', async () => {
+    const f = fixture();
+    f.whis.findMovieByStashId.mockResolvedValue({
+      movieId: 42,
+      stashId: 'scene',
+      hasFile: true,
+    });
+    const result = await f.service.submitSceneRequest(
+      'scene',
+      settings,
+      'RE_REQUEST',
+    );
+    expect(result.outcome).toBe('NEEDS_IDENTIFICATION');
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+    expect(f.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('does not send a new search when a transfer appears during the final check', async () => {
+    const f = fixture();
+    f.whis.getQueueSnapshot
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ movieId: 42, status: 'downloading' }] as never);
+    const result = await f.service.submitSceneRequest(
+      'scene',
+      settings,
+      'RE_REQUEST',
+    );
+    expect(result.outcome).toBe('ALREADY_QUEUED');
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('preserves existing settings and respects an explicit no-search resume', async () => {
+    const f = fixture();
+    const result = await f.service.submitSceneRequest(
+      'scene',
+      { ...settings, monitored: false, searchForMovie: false },
+      'RE_REQUEST',
+    );
+    expect(result.outcome).toBe('ENTRY_REUSED');
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.db.request.upsert.mock.calls[0][0].update).not.toHaveProperty(
+      'settings',
+    );
+  });
+
+  it('refuses an unverified resume during a queue outage', async () => {
+    const f = fixture();
+    f.whis.getQueueSnapshot.mockRejectedValue(new Error('offline'));
+    await expect(
+      f.service.submitSceneRequest('scene', settings, 'RE_REQUEST'),
+    ).rejects.toThrow('offline');
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+    expect(f.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('rechecks missing-entry evidence after settings review so an externally created entry is reused', async () => {
+    const f = fixture();
+    f.whis.findMovieByStashId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ movieId: 42, stashId: 'scene', hasFile: false });
+    const result = await f.service.submitSceneRequest(
+      'scene',
+      settings,
+      'RE_REQUEST',
+    );
+    expect(result.outcome).toBe('SEARCH_STARTED');
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+    expect(f.whis.searchMovie).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires reviewed creation settings if a previously existing entry disappears', async () => {
+    const f = fixture();
+    f.whis.findMovieByStashId.mockResolvedValue(null);
+    await expect(
+      f.service.submitSceneRequest(
+        'scene',
+        { monitored: true, searchForMovie: true, tags: [] },
+        'RE_REQUEST',
+      ),
+    ).rejects.toThrow('Review a destination library');
+    expect(f.dispatch).not.toHaveBeenCalled();
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+  });
+
+  it('previews and executes existing active re-requests consistently without settings or dedupe errors', async () => {
+    const f = fixture();
+    f.whis.getQueueSnapshot.mockResolvedValue([
+      { movieId: 42, status: 'downloading' },
+    ] as never);
+    const dto = {
+      kind: 'RE_REQUEST' as const,
+      ids: ['scene'],
+      operationKey: randomUUID(),
+    };
+    const preview = await f.service.previewBatch(dto);
+    expect(preview.results[0]).toMatchObject({
+      eligible: true,
+      requiresSettings: false,
+      plannedAction: 'ALREADY_QUEUED',
+    });
+    expect(f.dispatch).not.toHaveBeenCalled();
+    const result = await f.service.executeBatch(dto);
+    expect(result.results[0]).toMatchObject({
+      ok: true,
+      result: { outcome: 'ALREADY_QUEUED' },
+    });
+    expect(f.whis.createMovie).not.toHaveBeenCalled();
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
+  });
+
+  it('does not consider an existing movie proof that an uncertain resume search was dispatched', async () => {
+    const f = fixture();
+    f.db.request.findUnique.mockResolvedValue({
+      activeActionId: 'pending',
+    } as never);
+    f.db.requestAction.findUnique.mockResolvedValue({
+      id: 'pending',
+      state: 'UNCERTAIN',
+      kind: 'RE_REQUEST',
+      dispatchedAt: new Date(100_000),
+      details: { operation: 'SEARCH_MOVIE', movieId: 42 },
+    });
+    await expect(f.service.checkOutcome('scene')).rejects.toThrow(
+      'still unknown',
+    );
+    expect(f.operations.finish).not.toHaveBeenCalled();
+    f.whis.getSearchCommands.mockResolvedValue([
+      {
+        id: 3,
+        movieIds: [42],
+        status: 'completed',
+        queuedAt: new Date(101_000).toISOString(),
+      },
+    ]);
+    expect(await f.service.checkOutcome('scene')).toMatchObject({
+      outcome: 'SEARCH_CONFIRMED',
+      commandId: 3,
+    });
+    expect(f.whis.searchMovie).not.toHaveBeenCalled();
   });
 });

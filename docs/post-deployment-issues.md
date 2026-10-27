@@ -1,6 +1,6 @@
 # Portal post-deployment issue queue
 
-27 October 2026. Prepared from the user's five reported issues and read-only inspection of the pass-1/pass-2 source, with Pass 3 in progress. **Queued only: no fixes, service changes, request actions or external issue publication have been performed for this backlog.** Complexity describes Codex implementation difficulty, not engineering days. Source locations below are relative to `media-server/.work/stasharr-portal-reconciliation-20261027`.
+27 October 2026. All five follow-ups below are implemented in the fork alongside Pass 3 and the upstream list-restoration PR. The sections retain the original diagnosis and acceptance criteria. See `followups-implementation.md` for delivered behavior and validation. Production activation is a separate reviewed step. Complexity describes Codex implementation difficulty, not engineering days.
 
 | ID | Priority | Issue | Codex complexity |
 | --- | --- | --- | --- |
@@ -10,7 +10,7 @@
 | P3-Q04 | P2 | Apply Portal's existing button and dialog design consistently | Low–medium |
 | P3-Q05 | P1 | Make re-request resume an existing acquisition appropriately, with history and duplicate-dispatch protection | High |
 
-Suggested implementation sequence: Q02 first so recovery links work, Q01 next, then Q03 and Q05 together, followed by Q04 across the completed workflows. Q04 can be developed alongside the backend changes. These are follow-up issues, not additions silently folded into Pass 3.
+Implementation covered Q02 browser links, Q01 guided match review, Q03/Q05 consistent defaults and resume behavior, and Q04 themed request controls. The upstream list cache also invalidates after these actions and configuration edits.
 
 ## P3-Q01 — Guided recovery for “imported but no match found”
 

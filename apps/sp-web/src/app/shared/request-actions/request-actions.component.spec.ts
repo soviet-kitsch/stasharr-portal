@@ -15,7 +15,7 @@ describe('request action controls', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: AppNotificationsService, useValue: { success: vi.fn() } },
+        { provide: AppNotificationsService, useValue: { success: vi.fn(), info: vi.fn() } },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -26,11 +26,22 @@ describe('request action controls', () => {
   });
 
   function button(fixture: { nativeElement: HTMLElement }, label: string): HTMLButtonElement {
-    const result = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
-      (item) => item.textContent?.trim() === label,
-    );
+    const result = Array.from(
+      new Set([
+        ...fixture.nativeElement.querySelectorAll<HTMLButtonElement>('button'),
+        ...document.querySelectorAll<HTMLButtonElement>('.app-review-dialog button'),
+      ]),
+    ).find((item) => item.textContent?.trim() === label);
     if (!result) throw new Error('Missing button: ' + label);
     return result;
+  }
+  function renderedText(fixture: { nativeElement: HTMLElement }): string {
+    return (
+      (fixture.nativeElement.textContent ?? '') +
+      Array.from(document.querySelectorAll('.app-review-dialog'))
+        .map((dialog) => dialog.textContent ?? '')
+        .join(' ')
+    );
   }
   function single() {
     const fixture = TestBed.createComponent(RequestActionsComponent);
@@ -47,9 +58,7 @@ describe('request action controls', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectNone((request) => request.method === 'POST');
-    expect(fixture.nativeElement.textContent).toContain(
-      'downloads and media files remain unchanged',
-    );
+    expect(renderedText(fixture)).toContain('downloads and media files remain unchanged');
     const changed = vi.spyOn(fixture.componentInstance.changed, 'emit');
     button(fixture, 'Delete from Portal').click();
     const request = http.expectOne('/api/requests/scene-1/dismiss');
@@ -64,7 +73,7 @@ describe('request action controls', () => {
     button(fixture, 'Search again').click();
     http.expectOne('/api/requests/scene-1/search').flush({ outcome: 'ALREADY_QUEUED' });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Already in the download queue.');
+    expect(renderedText(fixture)).toContain('Already in the download queue.');
   });
 
   it('offers an outcome check after an uncertain response without sending another search', async () => {
@@ -111,7 +120,7 @@ describe('request action controls', () => {
     expect(request.request.body.ids).toEqual(['one']);
     request.flush({ results: [{ id: 'one', ok: true, result: { outcome: 'DISMISSED' } }] });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Completed');
+    expect(renderedText(fixture)).toContain('Completed');
   });
 
   it('requires legacy settings to be chosen and can collect batch settings without submitting a scene', async () => {
@@ -120,7 +129,7 @@ describe('request action controls', () => {
     fixture.componentRef.setInput('settingsOnly', true);
     fixture.componentRef.setInput('open', true);
     fixture.detectChanges();
-    http.expectOne('/api/requests/scene-1/options').flush({
+    http.expectOne('/api/requests/scene-1/options?scope=batch').flush({
       scene: { stashId: 'scene-1', title: 'Example', studio: 'Studio' },
       settingsNotice: 'Choose settings for this older request.',
       defaults: {
@@ -152,5 +161,181 @@ describe('request action controls', () => {
       expect.objectContaining({ rootFolderPath: '/data', qualityProfileId: 2 }),
     );
     http.expectNone((request) => request.method === 'POST');
+  });
+  it('prefills the actual returned defaults instead of the first options without submitting automatically', async () => {
+    const fixture = TestBed.createComponent(SceneRequestModalComponent);
+    fixture.componentRef.setInput('sceneId', 'scene-1');
+    fixture.componentRef.setInput('rerequest', true);
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    http.expectOne('/api/requests/scene-1/options?scope=resume').flush({
+      scene: { stashId: 'scene-1', title: 'Example', studio: 'Studio' },
+      requiresSettings: true,
+      defaults: {
+        monitored: true,
+        searchForMovie: true,
+        rootFolderPath: '/preferred',
+        qualityProfileId: 2,
+        tags: [],
+      },
+      defaultSources: { rootFolderPath: 'CONFIGURED', qualityProfileId: 'CONFIGURED' },
+      rootFolders: [
+        { id: 1, path: '/first', accessible: true },
+        { id: 2, path: '/preferred', accessible: true },
+      ],
+      qualityProfiles: [
+        { id: 1, name: 'First' },
+        { id: 2, name: 'Preferred' },
+      ],
+      tags: [],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const component = fixture.componentInstance as any;
+    expect(component.requestForm.value).toMatchObject({
+      rootFolderPath: '/preferred',
+      qualityProfileId: 2,
+    });
+    expect(renderedText(fixture)).toContain('Configured default');
+    http.expectNone((request) => request.method === 'POST');
+  });
+
+  it('resumes an existing queued request without forcing unused creation settings', async () => {
+    const fixture = TestBed.createComponent(SceneRequestModalComponent);
+    fixture.componentRef.setInput('sceneId', 'scene-1');
+    fixture.componentRef.setInput('rerequest', true);
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    http.expectOne('/api/requests/scene-1/options?scope=resume').flush({
+      scene: { stashId: 'scene-1', title: 'Example', studio: 'Studio' },
+      requiresSettings: false,
+      plannedAction: 'ALREADY_QUEUED',
+      plannedMessage: 'Reuse the existing download.',
+      defaults: {
+        monitored: true,
+        searchForMovie: true,
+        rootFolderPath: null,
+        qualityProfileId: null,
+        tags: [],
+      },
+      rootFolders: [],
+      qualityProfiles: [],
+      tags: [],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('#request-root-folder')).toBeNull();
+    expect(renderedText(fixture)).toContain('Reuse the existing download.');
+    (fixture.componentInstance as any).submitRequest();
+    const submitted = http.expectOne('/api/requests/scene-1/rerequest');
+    expect(submitted.request.body).not.toHaveProperty('rootFolderPath');
+    expect(submitted.request.body).not.toHaveProperty('qualityProfileId');
+    expect(submitted.request.body.operationKey).toBeTruthy();
+    submitted.flush({
+      accepted: true,
+      alreadyExists: true,
+      stashId: 'scene-1',
+      whisparrMovieId: 42,
+      outcome: 'ALREADY_QUEUED',
+      message: 'Existing active acquisition reused.',
+    });
+    expect(TestBed.inject(AppNotificationsService).success).toHaveBeenCalledWith(
+      'Existing active acquisition reused.',
+      expect.any(String),
+    );
+  });
+
+  it('can confirm an all-existing batch without opening creation settings and reports its reused job', async () => {
+    const fixture = TestBed.createComponent(RequestBatchActionsComponent);
+    fixture.componentRef.setInput('scenes', [{ id: 'scene-1', title: 'Example' }]);
+    fixture.detectChanges();
+    button(fixture, 'Re-request selected').click();
+    http.expectOne('/api/requests/batch/preview').flush({
+      results: [
+        {
+          id: 'scene-1',
+          eligible: true,
+          requiresSettings: false,
+          plannedAction: 'ALREADY_QUEUED',
+          message: 'Reuse the current queue entry.',
+        },
+      ],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(renderedText(fixture)).not.toContain('Choose acquisition settings');
+    button(fixture, 'Confirm 1 actions').click();
+    const request = http.expectOne('/api/requests/batch/execute');
+    expect(request.request.body).not.toHaveProperty('settings');
+    request.flush({
+      results: [
+        {
+          id: 'scene-1',
+          ok: true,
+          result: { outcome: 'ALREADY_QUEUED', message: 'Existing download reused.' },
+        },
+      ],
+    });
+    fixture.detectChanges();
+    expect(renderedText(fixture)).toContain('Existing download reused.');
+  });
+
+  it('still requires settings review for a mixed batch containing a missing entry', async () => {
+    const fixture = TestBed.createComponent(RequestBatchActionsComponent);
+    fixture.componentRef.setInput('scenes', [
+      { id: 'active', title: 'Active' },
+      { id: 'missing', title: 'Missing' },
+    ]);
+    fixture.detectChanges();
+    button(fixture, 'Re-request selected').click();
+    http.expectOne('/api/requests/batch/preview').flush({
+      results: [
+        { id: 'active', eligible: true, requiresSettings: false, plannedAction: 'ALREADY_QUEUED' },
+        { id: 'missing', eligible: true, requiresSettings: true, plannedAction: 'CREATE_MOVIE' },
+      ],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(button(fixture, 'Confirm 2 actions').disabled).toBe(true);
+    button(fixture, 'Choose acquisition settings').click();
+    fixture.detectChanges();
+    http.expectOne('/api/requests/missing/options?scope=batch').flush({
+      scene: { stashId: 'missing', title: 'Missing', studio: 'Studio' },
+      defaults: {
+        monitored: true,
+        searchForMovie: true,
+        rootFolderPath: '/default',
+        qualityProfileId: 2,
+        tags: [],
+      },
+      rootFolders: [{ id: 1, path: '/default', accessible: true }],
+      qualityProfiles: [{ id: 2, name: 'HD' }],
+      tags: [],
+    });
+    http.expectNone((request) => request.method === 'POST');
+  });
+
+  it('shows the concrete resume outcome in retained request history', async () => {
+    const fixture = single();
+    button(fixture, 'Request history').click();
+    http.expectOne('/api/requests/scene-1/history').flush({
+      dismissed: false,
+      activeActionId: null,
+      actions: [
+        {
+          id: 'action',
+          kind: 'RE_REQUEST',
+          state: 'SUCCEEDED',
+          createdAt: new Date().toISOString(),
+          result: {
+            outcome: 'UPSTREAM_BLOCKED',
+            message: 'Queue blocked: destination needs attention.',
+          },
+        },
+      ],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(renderedText(fixture)).toContain('Queue blocked: destination needs attention.');
   });
 });

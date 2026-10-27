@@ -150,6 +150,13 @@ export interface SceneRequestOptionsTag {
 }
 
 export interface SceneRequestOptions {
+  requiresSettings?: boolean;
+  plannedAction?: string;
+  plannedMessage?: string;
+  defaultSources?: {
+    rootFolderPath: 'SAVED' | 'CONFIGURED' | 'ONLY_OPTION' | 'REQUIRED';
+    qualityProfileId: 'SAVED' | 'CONFIGURED' | 'ONLY_OPTION' | 'REQUIRED';
+  };
   settingsNotice?: string;
   scene: {
     stashId: string;
@@ -177,7 +184,16 @@ export interface SubmitSceneRequestPayload {
   tags: number[];
 }
 
+export type ResumeSceneRequestPayload = Omit<
+  SubmitSceneRequestPayload,
+  'rootFolderPath' | 'qualityProfileId'
+> &
+  Partial<Pick<SubmitSceneRequestPayload, 'rootFolderPath' | 'qualityProfileId'>>;
+
 export interface SubmitSceneRequestResponse {
+  outcome?: string;
+  message?: string;
+  commandId?: number;
   accepted: boolean;
   alreadyExists: boolean;
   stashId: string;

@@ -13,6 +13,7 @@ import {
   IntegrationResponse,
   IntegrationType,
   ReadinessState,
+  WhisparrDefaultOptions,
   hasSavedIntegrationConfig,
   integrationLabel,
   integrationReadinessState,
@@ -43,12 +44,7 @@ import {
 
 @Component({
   selector: 'app-settings-integrations-page',
-  imports: [
-    ButtonDirective,
-    Message,
-    ProgressSpinner,
-    IntegrationRepairPanelComponent,
-  ],
+  imports: [ButtonDirective, Message, ProgressSpinner, IntegrationRepairPanelComponent],
   templateUrl: './settings-integrations-page.component.html',
   styleUrl: './settings-integrations-page.component.scss',
 })
@@ -69,6 +65,28 @@ export class SettingsIntegrationsPageComponent implements OnInit {
   protected readonly healthError = signal<string | null>(null);
   protected readonly refreshingHealth = signal(false);
   protected readonly resettingAll = signal(false);
+  protected readonly defaultOptions = signal<WhisparrDefaultOptions | null>(null);
+  protected readonly loadingDefaultOptions = signal(false);
+  protected readonly defaultOptionsError = signal<string | null>(null);
+
+  protected loadDefaultOptions(): void {
+    if (this.loadingDefaultOptions()) return;
+    this.loadingDefaultOptions.set(true);
+    this.defaultOptionsError.set(null);
+    this.integrationsService
+      .getWhisparrDefaultOptions()
+      .pipe(finalize(() => this.loadingDefaultOptions.set(false)))
+      .subscribe({
+        next: (options) => this.defaultOptions.set(options),
+        error: (error) =>
+          this.defaultOptionsError.set(
+            describeMutationError(
+              error,
+              'Could not load Whisparr choices. Existing defaults are preserved.',
+            ),
+          ),
+      });
+  }
 
   private readonly allServiceTypes: IntegrationType[] = ['STASH', 'WHISPARR', 'STASHDB', 'FANSDB'];
 
@@ -107,17 +125,14 @@ export class SettingsIntegrationsPageComponent implements OnInit {
     createEmptyIntegrationsRecord(),
   );
 
-  protected readonly saveState = signal<Record<IntegrationType, IntegrationActionState>>(
-    createActionStateRecord(),
-  );
+  protected readonly saveState =
+    signal<Record<IntegrationType, IntegrationActionState>>(createActionStateRecord());
 
-  protected readonly saveAndTestState = signal<Record<IntegrationType, IntegrationActionState>>(
-    createActionStateRecord(),
-  );
+  protected readonly saveAndTestState =
+    signal<Record<IntegrationType, IntegrationActionState>>(createActionStateRecord());
 
-  protected readonly resetState = signal<Record<IntegrationType, IntegrationActionState>>(
-    createActionStateRecord(),
-  );
+  protected readonly resetState =
+    signal<Record<IntegrationType, IntegrationActionState>>(createActionStateRecord());
 
   ngOnInit(): void {
     this.loadSettingsData();
@@ -374,7 +389,7 @@ export class SettingsIntegrationsPageComponent implements OnInit {
   }
 
   protected saveIntegration(type: IntegrationType): void {
-    if (this.pageMutationRunning()) {
+    if (this.pageMutationRunning() || this.forms[type].invalid) {
       return;
     }
 
@@ -423,7 +438,12 @@ export class SettingsIntegrationsPageComponent implements OnInit {
   }
 
   protected saveAndTestIntegration(type: IntegrationType): void {
-    if (this.pageMutationRunning()) {
+    if (this.pageMutationRunning() || this.forms[type].invalid) {
+      return;
+    }
+
+    if (this.presentationOnlyChanges(type)) {
+      this.saveIntegration(type);
       return;
     }
 
@@ -520,10 +540,7 @@ export class SettingsIntegrationsPageComponent implements OnInit {
           });
         },
         error: (error: unknown) => {
-          const message = describeMutationError(
-            error,
-            `Failed to reset ${this.labelFor(type)}.`,
-          );
+          const message = describeMutationError(error, `Failed to reset ${this.labelFor(type)}.`);
           this.notifications.error(message);
           patchActionState(this.resetState, type, {
             success: null,
@@ -656,10 +673,28 @@ export class SettingsIntegrationsPageComponent implements OnInit {
       this.forms[type].setValue({
         name: integration?.name ?? '',
         baseUrl: integration?.baseUrl ?? '',
+        browserUrl: integration?.browserUrl ?? '',
+        defaultRootFolderPath: integration?.defaultRootFolderPath ?? '',
+        defaultQualityProfileId: integration?.defaultQualityProfileId?.toString() ?? '',
         apiKey: '',
         enabled: defaultEnabledValue(type, integration),
       });
     }
+  }
+
+  private presentationOnlyChanges(type: IntegrationType): boolean {
+    const existing = this.integrations()[type];
+    if (!existing) return false;
+    const payload = buildIntegrationPayload(type, this.forms[type]);
+    return (
+      !payload.apiKey &&
+      (payload.baseUrl ?? null) === existing.baseUrl &&
+      (payload.name ?? null) === existing.name &&
+      (isCatalogProviderType(type) || payload.enabled === existing.enabled) &&
+      ((payload.browserUrl ?? null) !== (existing.browserUrl ?? null) ||
+        (payload.defaultRootFolderPath ?? null) !== (existing.defaultRootFolderPath ?? null) ||
+        (payload.defaultQualityProfileId ?? null) !== (existing.defaultQualityProfileId ?? null))
+    );
   }
 
   private catalogProvider(): CatalogProviderType | null {

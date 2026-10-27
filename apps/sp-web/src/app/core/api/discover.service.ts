@@ -20,6 +20,7 @@ import {
   SceneRequestOptions,
   ScenesFeedResponse,
   SubmitSceneRequestPayload,
+  ResumeSceneRequestPayload,
   SubmitSceneRequestResponse,
   StudioDetails,
 } from './discover.types';
@@ -75,15 +76,19 @@ export class DiscoverService {
     return this.http.get<SceneDetails>(`/api/scenes/${encodeURIComponent(stashId)}`);
   }
 
-  getSceneRequestOptions(stashId: string): Observable<SceneRequestOptions> {
+  getSceneRequestOptions(
+    stashId: string,
+    scope: 'single' | 'batch' | 'resume' = 'single',
+  ): Observable<SceneRequestOptions> {
     return this.http.get<SceneRequestOptions>(
       `/api/requests/${encodeURIComponent(stashId)}/options`,
+      { params: scope === 'single' ? new HttpParams() : new HttpParams().set('scope', scope) },
     );
   }
 
   submitSceneRequest(
     stashId: string,
-    payload: SubmitSceneRequestPayload,
+    payload: SubmitSceneRequestPayload | ResumeSceneRequestPayload,
     rerequest = false,
   ): Observable<SubmitSceneRequestResponse> {
     return this.http.post<SubmitSceneRequestResponse>(
