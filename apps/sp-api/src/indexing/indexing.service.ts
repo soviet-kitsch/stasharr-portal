@@ -97,6 +97,8 @@ interface SceneIndexPatch {
   stashId: string;
   requestStatus?: RequestStatus | null;
   requestUpdatedAt?: Date | null;
+  requestDismissedAt?: Date | string | null;
+  requestRevision?: number;
   title?: string | null;
   description?: string | null;
   imageUrl?: string | null;
@@ -408,6 +410,9 @@ export class IndexingService {
     stashId: string;
     requestStatus: RequestStatus;
     requestUpdatedAt: Date;
+    requestDismissedAt?: Date | null;
+    requestRevision?: number;
+    stashAvailable?: boolean;
     title: string | null;
     description: string | null;
     imageUrl: string | null;
@@ -430,6 +435,10 @@ export class IndexingService {
         stashId,
         requestStatus: input.requestStatus,
         requestUpdatedAt: input.requestUpdatedAt,
+        requestDismissedAt: input.requestDismissedAt,
+        requestRevision: input.requestRevision,
+        stashAvailable: input.stashAvailable,
+        stashLastSyncedAt: input.stashAvailable !== undefined ? now : undefined,
         title: input.title,
         description: input.description,
         imageUrl: input.imageUrl,
@@ -1596,6 +1605,10 @@ export class IndexingService {
     }
   }
 
+  async refreshRequestRow(stashId: string): Promise<void> {
+    await this.syncRequestRows([stashId]);
+  }
+
   private async syncRequestRows(stashIds?: string[]): Promise<string[]> {
     const normalizedIds =
       stashIds && stashIds.length > 0 ? this.normalizeStashIds(stashIds) : null;
@@ -1612,6 +1625,8 @@ export class IndexingService {
         stashId: true,
         status: true,
         updatedAt: true,
+        dismissedAt: true,
+        revision: true,
       },
     });
 
@@ -1622,6 +1637,8 @@ export class IndexingService {
           stashId: requestRow.stashId,
           requestStatus: requestRow.status,
           requestUpdatedAt: requestRow.updatedAt,
+          requestDismissedAt: requestRow.dismissedAt,
+          requestRevision: requestRow.revision,
           lastSyncedAt: now,
         })),
       );
@@ -1758,6 +1775,15 @@ export class IndexingService {
     patch: SceneIndexPatch,
     queueItems?: ResolverQueueItem[],
   ): SceneIndexUpsertData {
+    if ((patch.requestRevision ?? 0) < (existing?.requestRevision ?? 0)) {
+      patch = {
+        ...patch,
+        requestRevision: existing!.requestRevision,
+        requestDismissedAt: existing!.requestDismissedAt,
+        requestStatus: existing!.requestStatus,
+        requestUpdatedAt: existing!.requestUpdatedAt,
+      };
+    }
     if (
       existing &&
       patch.whisparrLastSyncedAt &&
@@ -1792,6 +1818,11 @@ export class IndexingService {
         existing?.requestUpdatedAt ?? null,
       ),
       title: this.pickValue(patch.title, existing?.title ?? null),
+      requestDismissedAt: this.pickValue(
+        patch.requestDismissedAt,
+        existing?.requestDismissedAt ?? null,
+      ),
+      requestRevision: patch.requestRevision ?? existing?.requestRevision ?? 0,
       description: this.pickValue(
         patch.description,
         existing?.description ?? null,
@@ -1885,9 +1916,12 @@ export class IndexingService {
       | 'whisparrQueueState'
       | 'whisparrErrorMessage'
       | 'stashAvailable'
+      | 'requestDismissedAt'
     >,
     queueItems?: ResolverQueueItem[],
   ): SceneLifecycle {
+    if (row.requestDismissedAt && !row.stashAvailable)
+      return SceneLifecycle.NOT_REQUESTED;
     const movie =
       row.whisparrMovieId !== null && row.whisparrMovieId !== undefined
         ? {

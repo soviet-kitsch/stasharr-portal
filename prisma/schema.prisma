@@ -7,11 +7,32 @@ datasource db {
 }
 
 model Request {
-  id        String        @id @default(cuid())
-  stashId   String        @unique
-  status    RequestStatus @default(REQUESTED)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id             String          @id @default(cuid())
+  stashId        String          @unique
+  status         RequestStatus   @default(REQUESTED)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  dismissedAt    DateTime?
+  settings       Json?
+  revision       Int             @default(0)
+  activeActionId String?
+  actions        RequestAction[]
+}
+
+model RequestAction {
+  id           String    @id
+  stashId      String
+  request      Request   @relation(fields: [stashId], references: [stashId])
+  kind         String
+  payloadHash  String
+  state        String    @default("RUNNING")
+  details      Json?
+  result       Json?
+  dispatchedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([stashId, createdAt])
 }
 
 model AdminUser {
@@ -43,6 +64,8 @@ model SceneIndex {
   stashId                String                 @id
   requestStatus          RequestStatus?
   requestUpdatedAt       DateTime?
+  requestDismissedAt     DateTime?
+  requestRevision        Int                    @default(0)
   title                  String?
   description            String?
   imageUrl               String?

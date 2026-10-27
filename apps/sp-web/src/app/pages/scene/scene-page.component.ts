@@ -17,6 +17,7 @@ import {
 } from '../../core/api/discover.types';
 import { SceneRequestModalComponent } from '../../shared/scene-request-modal/scene-request-modal.component';
 import { SceneStatusBadgeComponent } from '../../shared/scene-status-badge/scene-status-badge.component';
+import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
 
 interface SceneLifecycleStep {
   system: string;
@@ -36,6 +37,7 @@ interface SceneLifecycleStep {
     ButtonDirective,
     SceneStatusBadgeComponent,
     SceneRequestModalComponent,
+    RequestActionsComponent,
   ],
   templateUrl: './scene-page.component.html',
   styleUrl: './scene-page.component.scss',

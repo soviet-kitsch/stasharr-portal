@@ -11,6 +11,8 @@ import { CatalogProviderService } from '../providers/catalog/catalog-provider.se
 import { StashdbAdapter } from '../providers/stashdb/stashdb.adapter';
 import { WhisparrAdapter } from '../providers/whisparr/whisparr.adapter';
 import { RequestsService } from './requests.service';
+import { RequestOperationsService } from './request-operations.service';
+import { StashAdapter } from '../providers/stash/stash.adapter';
 
 describe('RequestsService', () => {
   const findOneMock = jest.fn();
@@ -52,6 +54,7 @@ describe('RequestsService', () => {
   const prismaService = {
     request: {
       upsert: upsertRequestMock,
+      findUnique: jest.fn().mockResolvedValue(null),
     },
   } as unknown as PrismaService;
 
@@ -82,16 +85,35 @@ describe('RequestsService', () => {
       whisparrAdapter,
       stashdbAdapter,
       prismaService,
+      {
+        run: (
+          _id: string,
+          _key: string,
+          _kind: string,
+          _payload: object,
+          work: (dispatch: () => Promise<void>) => Promise<object>,
+        ) => work(async () => {}),
+      } as unknown as RequestOperationsService,
+      {
+        findScenesByStashId: jest.fn().mockResolvedValue([]),
+      } as unknown as StashAdapter,
     );
 
     findOneMock.mockImplementation((type: IntegrationType) => {
       if (type === IntegrationType.WHISPARR) {
         return configuredWhisparrIntegration;
       }
+      if (type === IntegrationType.STASH)
+        return {
+          ...configuredWhisparrIntegration,
+          baseUrl: 'http://stash.local',
+        };
 
       throw new Error('Unexpected integration type');
     });
-    getConfiguredCatalogProviderMock.mockResolvedValue(configuredStashdbIntegration);
+    getConfiguredCatalogProviderMock.mockResolvedValue(
+      configuredStashdbIntegration,
+    );
 
     getSceneByIdMock.mockImplementation((stashId: string) =>
       Promise.resolve({
@@ -110,12 +132,13 @@ describe('RequestsService', () => {
         sourceUrls: [],
       }),
     );
-    upsertRequestMock.mockImplementation(({ where }: { where: { stashId: string } }) =>
-      Promise.resolve({
-        stashId: where.stashId,
-        status: RequestStatus.REQUESTED,
-        updatedAt: new Date('2026-03-27T00:00:00.000Z'),
-      }),
+    upsertRequestMock.mockImplementation(
+      ({ where }: { where: { stashId: string } }) =>
+        Promise.resolve({
+          stashId: where.stashId,
+          status: RequestStatus.REQUESTED,
+          updatedAt: new Date('2026-03-27T00:00:00.000Z'),
+        }),
     );
     requestImmediateRefreshMock.mockResolvedValue(undefined);
   });
@@ -191,11 +214,24 @@ describe('RequestsService', () => {
       },
       expect.objectContaining({ baseUrl: 'http://whisparr.local' }),
     );
-    expect(upsertRequestMock).toHaveBeenCalledWith({
-      where: { stashId: 'scene-1' },
-      create: { stashId: 'scene-1', status: RequestStatus.REQUESTED },
-      update: { status: RequestStatus.REQUESTED },
-    });
+    expect(upsertRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { stashId: 'scene-1' },
+        create: expect.objectContaining({
+          stashId: 'scene-1',
+          status: RequestStatus.REQUESTED,
+          settings: expect.objectContaining({
+            rootFolderPath: '/media/b',
+            qualityProfileId: 10,
+            tags: [50],
+          }),
+        }),
+        update: expect.objectContaining({
+          dismissedAt: null,
+          revision: { increment: 1 },
+        }),
+      }),
+    );
     expect(seedRequestedSceneMock).toHaveBeenCalledWith(
       expect.objectContaining({
         stashId: 'scene-1',
@@ -309,7 +345,7 @@ describe('RequestsService', () => {
     );
   });
 
-  it('uses the active FANSDB provider for request metadata lookups', async () => {
+  it('does not route independent catalog IDs into Whisparr acquisition', async () => {
     getRootFoldersMock.mockResolvedValue([
       { id: 2, path: '/media/b', accessible: true },
     ]);
@@ -323,11 +359,9 @@ describe('RequestsService', () => {
       apiKey: 'fansdb-key',
     });
 
-    await service.getRequestOptions('scene-1');
-
-    expect(getSceneByIdMock).toHaveBeenCalledWith('scene-1', {
-      baseUrl: 'http://fansdb.local/graphql',
-      apiKey: 'fansdb-key',
-    });
+    await expect(service.getRequestOptions('scene-1')).rejects.toThrow(
+      'independent acquisition route',
+    );
+    expect(createMovieMock).not.toHaveBeenCalled();
   });
 });

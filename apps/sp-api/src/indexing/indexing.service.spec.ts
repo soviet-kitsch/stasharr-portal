@@ -244,6 +244,8 @@ function createPrismaMock(config: {
     stashId: string;
     status: RequestStatus;
     updatedAt: Date;
+    dismissedAt?: Date | null;
+    revision?: number;
   }>;
   syncStateRow?: Record<string, unknown> | null;
   syncStateRows?: Array<Record<string, unknown>>;
@@ -958,6 +960,84 @@ describe('IndexingService', () => {
       whisparrHasFile: true,
       computedLifecycle: 'IMPORT_PENDING',
       whisparrQueueStatus: null,
+    });
+  });
+
+  it('does not resurrect a removed request from an older poll or an upstream movie refresh', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({
+          requestStatus: RequestStatus.REQUESTED,
+          requestDismissedAt: new Date(),
+          requestRevision: 3,
+          whisparrMovieId: 22,
+          computedLifecycle: 'NOT_REQUESTED',
+        }),
+      ],
+      requestRows: [
+        {
+          stashId: 'scene-1',
+          status: RequestStatus.REQUESTED,
+          updatedAt: new Date(),
+          dismissedAt: null,
+          revision: 2,
+        },
+      ],
+    });
+    getMovieSnapshotMock.mockResolvedValue([
+      { movieId: 22, stashId: 'scene-1', hasFile: false },
+    ]);
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.refreshRequestRow('scene-1');
+    await service.syncWhisparrMovies('test');
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      requestRevision: 3,
+      requestDismissedAt: expect.any(Date),
+      computedLifecycle: 'NOT_REQUESTED',
+    });
+  });
+
+  it('restores a removed request only when a newer intent revision is observed', async () => {
+    const { prisma, sceneIndexStore } = createPrismaMock({
+      sceneIndexRows: [
+        buildSceneIndexRow({
+          requestDismissedAt: new Date(),
+          requestRevision: 3,
+          computedLifecycle: 'NOT_REQUESTED',
+        }),
+      ],
+      requestRows: [
+        {
+          stashId: 'scene-1',
+          status: RequestStatus.REQUESTED,
+          updatedAt: new Date(),
+          dismissedAt: null,
+          revision: 4,
+        },
+      ],
+    });
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.refreshRequestRow('scene-1');
+    expect(sceneIndexStore.get('scene-1')).toMatchObject({
+      requestRevision: 4,
+      requestDismissedAt: null,
+      computedLifecycle: 'REQUESTED',
     });
   });
 

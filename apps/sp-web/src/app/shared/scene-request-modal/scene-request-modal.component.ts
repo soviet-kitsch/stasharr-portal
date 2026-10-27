@@ -21,7 +21,7 @@ import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { DiscoverService } from '../../core/api/discover.service';
 import { AppNotificationsService } from '../../core/notifications/app-notifications.service';
-import { SceneRequestOptions } from '../../core/api/discover.types';
+import { SceneRequestOptions, SubmitSceneRequestPayload } from '../../core/api/discover.types';
 
 type StringSelectOption = {
   label: string;
@@ -61,6 +61,11 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
   @Input() sceneId: string | null = null;
   @Input() sceneTitle: string | null = null;
   @Input() sceneImageUrl: string | null = null;
+  @Input() rerequest = false;
+  @Input() settingsOnly = false;
+  @Output() settingsSelected = new EventEmitter<SubmitSceneRequestPayload>();
+  private submissionKey = '';
+  private submissionBody = '';
 
   @Output() closed = new EventEmitter<void>();
   @Output() submitted = new EventEmitter<string>();
@@ -128,6 +133,7 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
 
   ngOnChanges(): void {
     if (!this.open) {
+      this.loadedForSceneId = null;
       this.cancelOptionsLoad();
       this.requestOptionsLoading.set(false);
       this.requestSubmitLoading.set(false);
@@ -191,33 +197,57 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
       return;
     }
 
+    const settings: SubmitSceneRequestPayload = {
+      monitored: this.requestForm.controls.monitored.value,
+      rootFolderPath: this.requestForm.controls.rootFolderPath.value,
+      searchForMovie: this.requestForm.controls.searchForMovie.value,
+      qualityProfileId,
+      tags: this.requestForm.controls.tags.value,
+    };
+    if (this.settingsOnly) {
+      this.settingsSelected.emit(settings);
+      this.closed.emit();
+      return;
+    }
+    const body = JSON.stringify({ currentSceneId, settings, rerequest: this.rerequest });
+    if (body !== this.submissionBody) {
+      this.submissionBody = body;
+      this.submissionKey = crypto.randomUUID();
+    }
     this.requestSubmitLoading.set(true);
     this.requestSubmitError.set(null);
 
     this.discoverService
-      .submitSceneRequest(currentSceneId, {
-        monitored: this.requestForm.controls.monitored.value,
-        rootFolderPath: this.requestForm.controls.rootFolderPath.value,
-        searchForMovie: this.requestForm.controls.searchForMovie.value,
-        qualityProfileId,
-        tags: this.requestForm.controls.tags.value,
-      })
+      .submitSceneRequest(
+        currentSceneId,
+        { ...settings, operationKey: this.submissionKey },
+        this.rerequest,
+      )
       .pipe(
         finalize(() => {
           this.requestSubmitLoading.set(false);
         }),
       )
       .subscribe({
-        next: () => {
+        next: (response) => {
+          this.submissionBody = '';
           this.notifications.success(
-            'Scene request submitted to Whisparr',
+            response.alreadyExists
+              ? 'Scene already present; no duplicate request sent'
+              : 'Scene request submitted to Whisparr',
             'Track progress on Acquisition.',
           );
           this.submitted.emit(currentSceneId);
           this.closed.emit();
         },
-        error: () => {
-          this.requestSubmitError.set('Failed to submit request to the API.');
+        error: (error) => {
+          if (error.error?.actionState === 'FAILED' || (error.status && error.status !== 409))
+            this.submissionBody = '';
+          this.requestSubmitError.set(
+            typeof error.error?.message === 'string'
+              ? error.error.message
+              : 'The result could not be confirmed. Check request history before retrying.',
+          );
         },
       });
   }
@@ -251,12 +281,15 @@ export class SceneRequestModalComponent implements OnChanges, OnDestroy {
           this.requestForm.patchValue({
             monitored: options.defaults.monitored,
             searchForMovie: options.defaults.searchForMovie,
-            rootFolderPath:
-              options.rootFolders.find((folder) => folder.accessible)?.path ??
-              options.rootFolders[0]?.path ??
-              '',
-            qualityProfileId: options.qualityProfiles[0]?.id ?? null,
-            tags: [],
+            rootFolderPath: options.settingsNotice
+              ? (options.defaults.rootFolderPath ?? '')
+              : (options.rootFolders.find((folder) => folder.accessible)?.path ??
+                options.rootFolders[0]?.path ??
+                ''),
+            qualityProfileId: options.settingsNotice
+              ? (options.defaults.qualityProfileId ?? null)
+              : (options.qualityProfiles[0]?.id ?? null),
+            tags: options.defaults.tags ?? [],
           });
         },
         error: () => {

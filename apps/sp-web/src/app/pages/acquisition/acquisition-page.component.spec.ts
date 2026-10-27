@@ -1,5 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { AppNotificationsService } from '../../core/notifications/app-notifications.service';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { AcquisitionService } from '../../core/api/acquisition.service';
@@ -238,6 +240,8 @@ describe('AcquisitionPageComponent', () => {
     await TestBed.configureTestingModule({
       imports: [AcquisitionPageComponent],
       providers: [
+        provideHttpClient(),
+        { provide: AppNotificationsService, useValue: { success: vi.fn() } },
         provideRouter([]),
         {
           provide: AcquisitionService,

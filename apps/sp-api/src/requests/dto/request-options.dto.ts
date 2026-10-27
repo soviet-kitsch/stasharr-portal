@@ -7,6 +7,9 @@ export class RequestOptionsSceneDto {
 export class RequestOptionsDefaultsDto {
   monitored!: boolean;
   searchForMovie!: boolean;
+  rootFolderPath?: string | null;
+  qualityProfileId?: number | null;
+  tags?: number[];
 }
 
 export class RequestOptionsRootFolderDto {
@@ -26,6 +29,7 @@ export class RequestOptionsTagDto {
 }
 
 export class RequestOptionsDto {
+  settingsNotice?: string;
   scene!: RequestOptionsSceneDto;
   defaults!: RequestOptionsDefaultsDto;
   rootFolders!: RequestOptionsRootFolderDto[];

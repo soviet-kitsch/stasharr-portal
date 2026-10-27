@@ -5,10 +5,18 @@ import { StashdbModule } from '../providers/stashdb/stashdb.module';
 import { WhisparrModule } from '../providers/whisparr/whisparr.module';
 import { RequestsController } from './requests.controller';
 import { RequestsService } from './requests.service';
+import { RequestOperationsService } from './request-operations.service';
+import { StashModule } from '../providers/stash/stash.module';
 
 @Module({
-  imports: [IndexingModule, IntegrationsModule, WhisparrModule, StashdbModule],
+  imports: [
+    IndexingModule,
+    IntegrationsModule,
+    WhisparrModule,
+    StashdbModule,
+    StashModule,
+  ],
   controllers: [RequestsController],
-  providers: [RequestsService],
+  providers: [RequestsService, RequestOperationsService],
 })
 export class RequestsModule {}

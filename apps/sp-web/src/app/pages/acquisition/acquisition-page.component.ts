@@ -10,6 +10,8 @@ import {
   signal,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
+import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize, Subscription } from 'rxjs';
 import { Message } from 'primeng/message';
@@ -57,7 +59,15 @@ interface AcquisitionPageAlert {
 
 @Component({
   selector: 'app-acquisition-page',
-  imports: [RouterLink, Message, ProgressSpinner, SceneStatusBadgeComponent, DatePipe],
+  imports: [
+    RouterLink,
+    Message,
+    ProgressSpinner,
+    SceneStatusBadgeComponent,
+    DatePipe,
+    RequestActionsComponent,
+    RequestBatchActionsComponent,
+  ],
   templateUrl: './acquisition-page.component.html',
   styleUrl: './acquisition-page.component.scss',
 })
@@ -137,6 +147,19 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   protected readonly hasMore = signal(true);
   protected readonly inFlight = signal(false);
   protected readonly items = signal<AcquisitionSceneItem[]>([]);
+  protected readonly selectedIds = signal<string[]>([]);
+  protected readonly selectedScenes = computed(() =>
+    this.items().filter((item) => this.selectedIds().includes(item.id)),
+  );
+  protected toggleSelection(id: string): void {
+    this.selectedIds.update((ids) =>
+      ids.includes(id) ? ids.filter((value) => value !== id) : ids.length < 20 ? [...ids, id] : ids,
+    );
+  }
+  protected actionsFinished(): void {
+    this.selectedIds.set([]);
+    this.resetFeedAndReload();
+  }
   protected readonly runtimeHealth = this.runtimeHealthService.status;
   protected readonly selectedLifecycle = signal<AcquisitionLifecycleFilter>('ANY');
   protected readonly countsByLifecycle = signal<AcquisitionCountsByLifecycle>(
@@ -625,6 +648,7 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private resetFeedAndReload(): void {
+    this.selectedIds.set([]);
     this.feedVersion += 1;
     this.pendingReload = false;
     this.page.set(0);

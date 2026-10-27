@@ -121,6 +121,7 @@
           }
         </div>
 
+        <app-request-batch-actions [scenes]="selectedScenes()" (finished)="actionsFinished()" />
         @for (section of visibleSections(); track section.lifecycle) {
           <section
             class="lifecycle-section app-section-panel"
@@ -173,6 +174,13 @@
 
                   <div class="card-body">
                     <div class="card-status-row">
+                      <input
+                        type="checkbox"
+                        [attr.aria-label]="'Select ' + item.title"
+                        [checked]="selectedIds().includes(item.id)"
+                        [disabled]="selectedIds().length >= 20 && !selectedIds().includes(item.id)"
+                        (change)="toggleSelection(item.id)"
+                      />
                       @if (item.reconciliation; as reconciliation) {
                         <span
                           class="reconciliation-label"
@@ -224,6 +232,12 @@
                     </div>
 
                     <div class="card-actions app-action-row">
+                      <app-request-actions
+                        [sceneId]="item.id"
+                        [sceneTitle]="item.title"
+                        [condition]="item.reconciliation?.condition ?? null"
+                        (changed)="actionsFinished()"
+                      />
                       <a
                         class="primary-link small"
                         [routerLink]="['/scene', item.id]"

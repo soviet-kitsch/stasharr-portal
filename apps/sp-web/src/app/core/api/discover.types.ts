@@ -150,6 +150,7 @@ export interface SceneRequestOptionsTag {
 }
 
 export interface SceneRequestOptions {
+  settingsNotice?: string;
   scene: {
     stashId: string;
     title: string;
@@ -158,6 +159,9 @@ export interface SceneRequestOptions {
   defaults: {
     monitored: boolean;
     searchForMovie: boolean;
+    rootFolderPath?: string | null;
+    qualityProfileId?: number | null;
+    tags?: number[];
   };
   rootFolders: SceneRequestOptionsRootFolder[];
   qualityProfiles: SceneRequestOptionsQualityProfile[];
@@ -165,6 +169,7 @@ export interface SceneRequestOptions {
 }
 
 export interface SubmitSceneRequestPayload {
+  operationKey?: string;
   monitored: boolean;
   rootFolderPath: string;
   searchForMovie: boolean;

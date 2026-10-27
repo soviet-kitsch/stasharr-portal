@@ -205,6 +205,12 @@
     <div class="content-shell app-section-stack">
       <section class="section lifecycle-section app-section-panel">
         <h2>Lifecycle</h2>
+        <app-request-actions
+          [sceneId]="scene.id"
+          [sceneTitle]="scene.title"
+          [tracked]="scene.status.state !== 'NOT_REQUESTED' && scene.status.state !== 'AVAILABLE'"
+          (changed)="onRequestSubmitted(scene.id)"
+        />
         <p class="overview-text">{{ lifecycleSummary(scene) }}</p>
 
         <div class="lifecycle-grid">

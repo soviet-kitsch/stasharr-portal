@@ -31,6 +31,39 @@ describe('WhisparrAdapter', () => {
     );
   });
 
+  describe('search commands', () => {
+    it('sends the native MoviesSearch command for exactly one existing movie', async () => {
+      fetchMock.mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) });
+      expect(
+        await adapter.searchMovie(42, { baseUrl: 'http://whisparr.local' }),
+      ).toEqual({ commandId: 7 });
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://whisparr.local/api/v3/command',
+      );
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        name: 'MoviesSearch',
+        movieIds: [42],
+      });
+    });
+
+    it('requires a confirmed command identifier', async () => {
+      fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+      await expect(
+        adapter.searchMovie(42, { baseUrl: 'http://whisparr.local' }),
+      ).rejects.toThrow('confirm a search command');
+    });
+
+    it('rejects malformed search-command snapshots', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => [{ id: 7, name: 'MoviesSearch', status: 'started' }],
+      });
+      await expect(
+        adapter.getSearchCommands({ baseUrl: 'http://whisparr.local' }),
+      ).rejects.toThrow('incomplete search-command snapshot');
+    });
+  });
+
   describe('complete snapshot safety', () => {
     it.each([
       [{ id: 1, stashId: 'a', hasFile: true }, { id: 2 }],
@@ -139,7 +172,7 @@ describe('WhisparrAdapter', () => {
       );
     });
 
-    it('ignores malformed entries', async () => {
+    it('rejects malformed lookup entries instead of inferring absence', async () => {
       fetchMock.mockResolvedValue({
         ok: true,
         json: () =>
@@ -155,11 +188,7 @@ describe('WhisparrAdapter', () => {
         adapter.findMovieByStashId('scene-1', {
           baseUrl: 'http://whisparr.local',
         }),
-      ).resolves.toEqual({
-        movieId: 3,
-        stashId: 'scene-1',
-        hasFile: false,
-      });
+      ).rejects.toThrow('lookup is incomplete');
     });
 
     it('throws and logs for multiple movie matches', async () => {

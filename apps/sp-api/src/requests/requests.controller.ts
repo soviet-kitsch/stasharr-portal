@@ -3,10 +3,54 @@ import { RequestOptionsDto } from './dto/request-options.dto';
 import { SubmitSceneRequestDto } from './dto/submit-scene-request.dto';
 import { SubmitSceneRequestResponseDto } from './dto/submit-scene-request-response.dto';
 import { RequestsService } from './requests.service';
+import {
+  BatchRequestActionDto,
+  RequestActionDto,
+} from './dto/request-action.dto';
 
 @Controller('api/requests')
 export class RequestsController {
   constructor(private readonly requestsService: RequestsService) {}
+
+  @Post('batch/preview')
+  preview(@Body() dto: BatchRequestActionDto) {
+    return this.requestsService.previewBatch(dto);
+  }
+
+  @Post('batch/execute')
+  execute(@Body() dto: BatchRequestActionDto) {
+    return this.requestsService.executeBatch(dto);
+  }
+
+  @Get(':stashId/history')
+  history(@Param('stashId') id: string) {
+    return this.requestsService.getHistory(id);
+  }
+
+  @Post(':stashId/outcome')
+  outcome(@Param('stashId') id: string) {
+    return this.requestsService.checkOutcome(id);
+  }
+
+  @Post(':stashId/search')
+  search(@Param('stashId') id: string, @Body() dto: RequestActionDto) {
+    return this.requestsService.searchAgain(id, dto.operationKey);
+  }
+
+  @Post(':stashId/dismiss')
+  dismiss(@Param('stashId') id: string, @Body() dto: RequestActionDto) {
+    return this.requestsService.setDismissed(id, dto.operationKey, true);
+  }
+
+  @Post(':stashId/restore')
+  restore(@Param('stashId') id: string, @Body() dto: RequestActionDto) {
+    return this.requestsService.setDismissed(id, dto.operationKey, false);
+  }
+
+  @Post(':stashId/rerequest')
+  rerequest(@Param('stashId') id: string, @Body() dto: SubmitSceneRequestDto) {
+    return this.requestsService.submitSceneRequest(id, dto, 'RE_REQUEST');
+  }
 
   @Get(':stashId/options')
   getRequestOptions(

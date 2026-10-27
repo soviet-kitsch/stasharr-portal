@@ -6,10 +6,14 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 
 export class SubmitSceneRequestDto {
+  @IsOptional()
+  @IsUUID()
+  operationKey?: string;
   @Transform(({ value }) => value !== false)
   @IsBoolean()
   monitored = true;

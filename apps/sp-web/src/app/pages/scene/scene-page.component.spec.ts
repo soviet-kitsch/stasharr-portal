@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { DiscoverService } from '../../core/api/discover.service';
@@ -47,6 +48,7 @@ describe('ScenePageComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ScenePageComponent],
       providers: [
+        provideHttpClient(),
         provideRouter([]),
         {
           provide: DiscoverService,

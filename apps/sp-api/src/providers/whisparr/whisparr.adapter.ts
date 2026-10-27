@@ -121,6 +121,17 @@ export class WhisparrAdapter {
           (entry): entry is WhisparrMovieLookupResult =>
             entry !== null && entry.stashId === normalizedStashId,
         );
+      if (
+        payload.some(
+          (entry) =>
+            !this.parseMovieLookupEntry(entry) ||
+            typeof (entry as Record<string, unknown>)?.hasFile !== 'boolean',
+        )
+      ) {
+        throw new BadGatewayException(
+          'Whisparr lookup is incomplete. Absence cannot be confirmed.',
+        );
+      }
 
       this.logger.debug(
         `Whisparr movie lookup normalized matches: ${this.safeJson({
@@ -373,7 +384,79 @@ export class WhisparrAdapter {
       }
 
       const movieId = this.readNumber((payload as Record<string, unknown>).id);
+      if (movieId === null || !Number.isInteger(movieId) || movieId <= 0)
+        throw new BadGatewayException(
+          'Whisparr did not confirm a created movie ID.',
+        );
       return { movieId };
+    });
+  }
+
+  async getSearchCommands(config: WhisparrAdapterBaseConfig): Promise<
+    Array<{
+      id: number;
+      movieIds: number[];
+      status: string;
+      queuedAt: string | null;
+    }>
+  > {
+    const endpoint = new URL(
+      this.resolveMovieCollectionEndpoint(config.baseUrl),
+    );
+    endpoint.pathname = endpoint.pathname.replace(/\/movie$/, '/command');
+    return this.trackRuntimeHealth(async () => {
+      const rows = await this.fetchArrayPayload(endpoint.toString(), config);
+      return rows
+        .filter((row) => (row as { name?: string })?.name === 'MoviesSearch')
+        .map((raw) => {
+          const row = raw as {
+            id?: unknown;
+            status?: unknown;
+            queued?: unknown;
+            body?: { movieIds?: unknown };
+          };
+          if (
+            !Number.isInteger(row.id) ||
+            typeof row.status !== 'string' ||
+            !Array.isArray(row.body?.movieIds) ||
+            !row.body.movieIds.every(Number.isInteger)
+          ) {
+            throw new BadGatewayException(
+              'Whisparr returned an incomplete search-command snapshot.',
+            );
+          }
+          return {
+            id: row.id as number,
+            movieIds: row.body.movieIds as number[],
+            status: row.status,
+            queuedAt: typeof row.queued === 'string' ? row.queued : null,
+          };
+        });
+    });
+  }
+
+  async searchMovie(
+    movieId: number,
+    config: WhisparrAdapterBaseConfig,
+  ): Promise<{ commandId: number }> {
+    if (!Number.isInteger(movieId) || movieId <= 0)
+      throw new BadGatewayException('Invalid Whisparr movie ID.');
+    const endpoint = new URL(
+      this.resolveMovieCollectionEndpoint(config.baseUrl),
+    );
+    endpoint.pathname = endpoint.pathname.replace(/\/movie$/, '/command');
+    return this.trackRuntimeHealth(async () => {
+      const response = await this.fetchJsonPayload(
+        endpoint.toString(),
+        config,
+        { method: 'POST', body: { name: 'MoviesSearch', movieIds: [movieId] } },
+      );
+      const id = (response as { id?: unknown })?.id;
+      if (!Number.isInteger(id) || (id as number) <= 0)
+        throw new BadGatewayException(
+          'Whisparr did not confirm a search command ID.',
+        );
+      return { commandId: id as number };
     });
   }
 

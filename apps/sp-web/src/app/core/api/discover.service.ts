@@ -82,9 +82,10 @@ export class DiscoverService {
   submitSceneRequest(
     stashId: string,
     payload: SubmitSceneRequestPayload,
+    rerequest = false,
   ): Observable<SubmitSceneRequestResponse> {
     return this.http.post<SubmitSceneRequestResponse>(
-      `/api/requests/${encodeURIComponent(stashId)}`,
+      `/api/requests/${encodeURIComponent(stashId)}${rerequest ? '/rerequest' : ''}`,
       payload,
     );
   }
