@@ -1328,6 +1328,80 @@ describe('IndexingService', () => {
     expectInteractiveTransactionsToUseIndexWriteOptions(prisma);
   });
 
+  it('keeps an imported alternate-catalog source match available across full snapshots without rewriting native links', async () => {
+    const { prisma, sceneIndexStore, librarySceneIndexStore } =
+      createPrismaMock({
+        sceneIndexRows: [
+          buildSceneIndexRow({
+            stashId: 'requested',
+            whisparrMovieId: 137,
+            whisparrHasFile: true,
+            stashAvailable: false,
+            computedLifecycle: 'IMPORT_PENDING',
+          }),
+        ],
+      });
+    getLocalLibraryScenePageMock.mockResolvedValue({
+      total: 1,
+      page: 1,
+      hasMore: false,
+      items: [
+        {
+          id: '128',
+          activeCatalogSceneId: 'alternate',
+          linkedCatalogRefs: ['STASHDB|alternate'],
+          title: 'Local scene',
+          description: null,
+          imageUrl: null,
+          studioId: null,
+          studio: null,
+          studioImageUrl: null,
+          performerIds: [],
+          performerNames: [],
+          tagIds: [],
+          tagNames: [],
+          releaseDate: null,
+          duration: 3668,
+          viewUrl: 'http://stash/scenes/128',
+          createdAt: null,
+          updatedAt: null,
+          hasFavoritePerformer: false,
+          favoriteStudio: false,
+          hasFavoriteTag: false,
+        },
+      ],
+    });
+    findScenesByStashIdMock.mockResolvedValue([
+      { id: '128', evidence: 'SOURCE_IDENTITY' },
+    ]);
+    const service = new IndexingService(
+      prisma,
+      integrationsService,
+      catalogProviderService,
+      whisparrAdapter,
+      stashAdapter,
+      stashdbAdapter,
+      syncStateService,
+    );
+    await service.syncLibraryProjection('first');
+    await service.syncLibraryProjection('second');
+    expect(sceneIndexStore.get('requested')).toMatchObject({
+      stashAvailable: true,
+      computedLifecycle: 'AVAILABLE',
+    });
+    expect(librarySceneIndexStore.get('128')).toMatchObject({
+      linkedCatalogRefs: ['STASHDB|alternate'],
+    });
+    findScenesByStashIdMock.mockRejectedValue(new Error('source unavailable'));
+    await expect(service.syncLibraryProjection('outage')).rejects.toThrow(
+      'source unavailable',
+    );
+    expect(sceneIndexStore.get('requested')).toMatchObject({
+      stashAvailable: true,
+      computedLifecycle: 'AVAILABLE',
+    });
+  });
+
   it.each(['STASHDB', 'FANSDB'] as const)(
     'keeps secondary %s catalog references available across full projections',
     async (providerKey) => {

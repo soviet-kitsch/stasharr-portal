@@ -269,4 +269,43 @@ describe('ImportMatchReviewService', () => {
     );
     expect(indexing.requestImmediateRefresh).not.toHaveBeenCalled();
   });
+  it('shows source-identity matches as available rather than reporting a catalog conflict', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(
+        response([
+          scene({
+            stash_ids: [
+              {
+                endpoint: 'https://stashdb.org/graphql',
+                stash_id: 'alternate',
+              },
+            ],
+          }),
+        ]),
+      );
+    (service as any).stashAdapter = {
+      findScenesByStashId: jest
+        .fn()
+        .mockResolvedValue([
+          {
+            id: 'local-1',
+            viewUrl: 'https://media.example/stash/scenes/local-1',
+            evidence: 'SOURCE_IDENTITY',
+            sourceIdentity: {
+              title: 'Local record',
+              catalogIds: ['alternate'],
+              files: [{ path: '/stash/Example.mp4', size: 2048 }],
+            },
+          },
+        ]),
+    };
+    const result = await service.review('catalog-1');
+    expect(result.condition).toBe('MATCH_FOUND');
+    expect(result.summary).toContain('another catalog ID');
+    expect(result.candidates[0].evidence).toBe('SOURCE_IDENTITY');
+    expect(result.stash.viewUrl).toBe(
+      'https://media.example/stash/scenes/local-1',
+    );
+  });
 });

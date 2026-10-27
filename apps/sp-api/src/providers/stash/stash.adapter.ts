@@ -1,10 +1,20 @@
-import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
+import {
+  CatalogSourceIdentityService,
+  sceneSourceUrl,
+} from '../catalog/catalog-source-identity.service';
 import { RuntimeHealthServiceKey } from '@prisma/client';
 import {
   type CatalogProviderKey,
   findCatalogExternalIdForProvider,
   hasCatalogSceneRef,
   normalizeCatalogSceneRefs,
+  resolveCatalogProviderKey,
 } from '../catalog/catalog-provider.util';
 import { RuntimeHealthService } from '../../runtime-health/runtime-health.service';
 import { fetchWithTimeout } from '../fetch-with-timeout';
@@ -25,6 +35,15 @@ export interface StashSceneMatch {
   height: number | null;
   viewUrl: string;
   label: string;
+  evidence?: 'SOURCE_IDENTITY';
+  sourceIdentity?: {
+    url: string;
+    studioId: string;
+    duration: number;
+    title: string | null;
+    catalogIds: string[];
+    files: { path: string; size: number | null }[];
+  };
 }
 
 export const STASH_SCENE_FEED_SORT_VALUES = [
@@ -251,7 +270,11 @@ interface StashGraphqlResponse {
 export class StashAdapter {
   private readonly logger = new Logger(StashAdapter.name);
 
-  constructor(private readonly runtimeHealthService: RuntimeHealthService) {}
+  constructor(
+    private readonly runtimeHealthService: RuntimeHealthService,
+    @Optional()
+    private readonly sourceIdentities?: CatalogSourceIdentityService,
+  ) {}
 
   async testConnection(config: StashAdapterBaseConfig): Promise<void> {
     await this.checkConnection(config, false);
@@ -309,7 +332,7 @@ export class StashAdapter {
 
     const scenes = payload.data?.findScenes?.scenes ?? [];
 
-    return scenes
+    const matches = scenes
       .map((scene) =>
         this.toSceneMatch(
           scene,
@@ -328,6 +351,108 @@ export class StashAdapter {
 
         return a.id.localeCompare(b.id);
       });
+    if (matches.length || !overlays?.providerKey || !this.sourceIdentities)
+      return matches;
+    return this.findSourceIdentityMatches(normalizedStashId, config, overlays);
+  }
+
+  private async findSourceIdentityMatches(
+    id: string,
+    config: StashAdapterBaseConfig,
+    overlays: StashSceneMatchOverlayConfig,
+  ): Promise<StashSceneMatch[]> {
+    const provider = overlays.providerKey!;
+    const identity = await this.sourceIdentities!.get(id, provider);
+    if (!identity) return [];
+    const matches = new Map<string, StashSceneMatch>();
+    for (const sourceUrl of identity.urls) {
+      const sceneFilter = this.buildSceneMatchFilter(id, overlays);
+      delete sceneFilter['stash_id_endpoint'];
+      sceneFilter['url'] = { value: sourceUrl, modifier: 'EQUALS' };
+      const payload = await this.executeQuery(
+        config,
+        `query SourceIdentityMatch($sceneFilter: SceneFilterType) {
+        findScenes(scene_filter: $sceneFilter, filter: {page: 1, per_page: 20}) {
+          count scenes { id title urls stash_ids {endpoint stash_id}
+            studio { stash_ids {endpoint stash_id} }
+            files { path size width height duration }
+          }
+        }
+      }`,
+        { sceneFilter },
+      );
+      const result = payload.data?.findScenes;
+      if (
+        typeof result?.count !== 'number' ||
+        !Number.isInteger(result.count) ||
+        result.count < 0 ||
+        result.count > 20 ||
+        !Array.isArray(result?.scenes) ||
+        result.scenes.length !== result.count
+      )
+        throw new BadGatewayException(
+          'Stash source-identity lookup is incomplete.',
+        );
+      for (const raw of result.scenes as any[]) {
+        const refs = (raw.stash_ids ?? []).filter(
+          (ref: any) => resolveCatalogProviderKey(ref.endpoint) === provider,
+        );
+        if (
+          !refs.length ||
+          !raw.studio?.stash_ids?.some(
+            (ref: any) =>
+              resolveCatalogProviderKey(ref.endpoint) === provider &&
+              ref.stash_id === identity.studioId,
+          )
+        )
+          continue;
+        if (!raw.urls?.some((url: string) => sceneSourceUrl(url) === sourceUrl))
+          continue;
+        const tolerance = Math.min(15, Math.max(2, identity.duration * 0.01));
+        if (
+          !raw.files?.some(
+            (file: any) =>
+              typeof file.path === 'string' &&
+              file.path.length > 0 &&
+              Number.isSafeInteger(Number(file.size)) &&
+              Number(file.size) > 0 &&
+              Number.isFinite(file.duration) &&
+              file.duration > 0 &&
+              Math.abs(file.duration - identity.duration) <= tolerance,
+          )
+        )
+          continue;
+        const match = this.toSceneMatch(
+          raw,
+          integrationBrowserBaseUrl(config) ?? config.baseUrl,
+          id,
+          null,
+        );
+        if (match)
+          matches.set(match.id, {
+            ...match,
+            evidence: 'SOURCE_IDENTITY',
+            sourceIdentity: {
+              url: sourceUrl,
+              studioId: identity.studioId,
+              duration: identity.duration,
+              title: typeof raw.title === 'string' ? raw.title : null,
+              catalogIds: refs.map((ref: any) => ref.stash_id),
+              files: raw.files
+                .filter((file: any) => typeof file.path === 'string')
+                .map((file: any) => ({
+                  path: file.path,
+                  size:
+                    Number.isSafeInteger(Number(file.size)) &&
+                    Number(file.size) > 0
+                      ? Number(file.size)
+                      : null,
+                })),
+            },
+          });
+      }
+    }
+    return [...matches.values()];
   }
 
   async getLocalSceneFeed(

@@ -1339,6 +1339,33 @@ export class IndexingService {
       );
     }
 
+    // StashDB may contain separate records for the same source scene. Resolve
+    // imported entries missing from the exact-ID snapshot using the same strict
+    // source identity checks used by live scene/request lookups.
+    if (activeCatalogProviderKey) {
+      const imported = await this.prisma.sceneIndex.findMany({
+        where: {
+          whisparrHasFile: true,
+          stashId: { notIn: [...availableActiveCatalogSceneIds] },
+        },
+        select: { stashId: true },
+      });
+      for (let offset = 0; offset < imported.length; offset += 6) {
+        const matches = await Promise.all(
+          imported.slice(offset, offset + 6).map(async (row) => ({
+            id: row.stashId,
+            copies: await this.stashAdapter.findScenesByStashId(
+              row.stashId,
+              config,
+              { providerKey: activeCatalogProviderKey },
+            ),
+          })),
+        );
+        for (const match of matches)
+          if (match.copies.length) availableActiveCatalogSceneIds.add(match.id);
+      }
+    }
+
     const [deletedRows, availabilityWrites] = await Promise.all([
       this.prisma.librarySceneIndex.deleteMany({
         where: {

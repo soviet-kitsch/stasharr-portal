@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { IntegrationStatus, IntegrationType } from '@prisma/client';
 import { IntegrationsService } from '../integrations/integrations.service';
@@ -16,6 +17,7 @@ import { CatalogProviderService } from '../providers/catalog/catalog-provider.se
 import { resolveCatalogProviderKey } from '../providers/catalog/catalog-provider.util';
 import { fetchWithTimeout } from '../providers/fetch-with-timeout';
 import { WhisparrAdapter } from '../providers/whisparr/whisparr.adapter';
+import { StashAdapter } from '../providers/stash/stash.adapter';
 
 type Config = {
   baseUrl: string;
@@ -60,6 +62,7 @@ export interface ImportMatchReview {
     viewUrl: string | null;
     evidence:
       | 'CATALOG_ID'
+      | 'SOURCE_IDENTITY'
       | 'PATH_AND_SIZE'
       | 'FILENAME_AND_SIZE'
       | 'PATH_ONLY'
@@ -83,6 +86,7 @@ export class ImportMatchReviewService {
     private readonly catalogs: CatalogProviderService,
     private readonly whisparr: WhisparrAdapter,
     private readonly indexing: IndexingService,
+    @Optional() private readonly stashAdapter?: StashAdapter,
   ) {}
 
   async review(id: string): Promise<ImportMatchReview> {
@@ -241,11 +245,57 @@ export class ImportMatchReviewService {
           Number(a.evidence === 'CATALOG_ID'),
       );
     }
+    if (
+      stash &&
+      provider &&
+      this.stashAdapter &&
+      result.stash.state === 'CHECKED' &&
+      !result.candidates.some(
+        (candidate) =>
+          candidate.evidence === 'CATALOG_ID' && candidate.files.length,
+      )
+    ) {
+      try {
+        const copies = await this.stashAdapter.findScenesByStashId(
+          sceneId,
+          stash,
+          { providerKey: provider.providerKey },
+        );
+        for (const copy of copies) {
+          if (copy.evidence !== 'SOURCE_IDENTITY' || !copy.sourceIdentity)
+            continue;
+          const identity = copy.sourceIdentity;
+          const candidate = result.candidates.find(
+            (candidate) => candidate.id === copy.id,
+          );
+          const verified = {
+            id: copy.id,
+            title: identity.title ?? `Stash scene ${copy.id}`,
+            viewUrl: copy.viewUrl,
+            evidence: 'SOURCE_IDENTITY' as const,
+            evidenceLabel:
+              'Same official scene URL, catalog studio and file duration — alternate catalog entry',
+            organized: candidate?.organized ?? false,
+            catalogIds: identity.catalogIds,
+            files: identity.files,
+          };
+          if (candidate) Object.assign(candidate, verified);
+          else result.candidates.push(verified);
+        }
+      } catch {
+        result.stash.state = 'UNAVAILABLE';
+        result.limitations.push(
+          'Source-identity verification was unavailable. No alternate catalog association was assumed.',
+        );
+      }
+    }
+
     // Never send a scene-specific action to the unfiltered Stash overview.
     // Multiple candidates retain their own links; none is chosen automatically.
     const linkedCandidates = result.candidates.filter(
       (candidate) =>
-        candidate.files.length > 0 && candidate.evidence === 'CATALOG_ID',
+        candidate.files.length > 0 &&
+        ['CATALOG_ID', 'SOURCE_IDENTITY'].includes(candidate.evidence),
     );
     const targets = linkedCandidates.length
       ? linkedCandidates
@@ -253,12 +303,17 @@ export class ImportMatchReviewService {
     if (targets.length === 1) result.stash.viewUrl = targets[0].viewUrl;
     const exact = result.candidates.some(
       (candidate) =>
-        candidate.evidence === 'CATALOG_ID' && candidate.files.length,
+        ['CATALOG_ID', 'SOURCE_IDENTITY'].includes(candidate.evidence) &&
+        candidate.files.length,
     );
     if (exact) {
       result.condition = 'MATCH_FOUND';
-      result.summary =
-        'Stash now lists this catalog link with a file. Refresh Portal status to reconcile the library.';
+      const sourceMatch = result.candidates.some(
+        (candidate) => candidate.evidence === 'SOURCE_IDENTITY',
+      );
+      result.summary = sourceMatch
+        ? 'Stash has the same official scene URL, catalog studio and matching file duration under another catalog ID. Refresh this scene to reconcile Portal; catalog links remain unchanged.'
+        : 'Stash now lists this catalog link with a file. Refresh Portal status to reconcile the library.';
       result.nextSteps = [
         'Open the matching Stash scene and confirm that its file can be played.',
         'Use Refresh this scene to reconcile Portal without downloading again.',

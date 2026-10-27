@@ -537,16 +537,16 @@ describe('AcquisitionPageComponent', () => {
       acquisitionService.getScenesFeed.mockImplementation(
         (page: number, perPage: number, filter: string) =>
           of(
-            buildResponse(rows.slice((page - 1) * 100, page * 100), {
+            buildResponse(rows.slice((page - 1) * perPage, page * perPage), {
               total: 120,
               page,
-              hasMore: page === 1,
+              hasMore: page * perPage < 120,
             }),
           ),
       );
       await component.selectAll(lifecycle);
-      expect(acquisitionService.getScenesFeed).toHaveBeenNthCalledWith(2, 1, 100, lifecycle);
-      expect(acquisitionService.getScenesFeed).toHaveBeenLastCalledWith(2, 100, lifecycle);
+      expect(acquisitionService.getScenesFeed).toHaveBeenNthCalledWith(2, 1, 50, lifecycle);
+      expect(acquisitionService.getScenesFeed).toHaveBeenLastCalledWith(3, 50, lifecycle);
       expect(component.selectedIds()).toHaveLength(120);
       expect(component.selectedScenes()).toHaveLength(120);
       expect(component.selectedIds()).not.toContain('scene-downloading');

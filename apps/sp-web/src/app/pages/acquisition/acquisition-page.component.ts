@@ -84,6 +84,7 @@ type AcquisitionPageFeedState = FeedState<AcquisitionSceneItem> & {
 })
 export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestroy {
   private static readonly PAGE_SIZE = 24;
+  private static readonly SELECTION_PAGE_SIZE = 50;
   private static readonly EMPTY_COUNTS: AcquisitionCountsByLifecycle = {
     REQUESTED: 0,
     DOWNLOADING: 0,
@@ -189,7 +190,11 @@ export class AcquisitionPageComponent implements OnInit, AfterViewInit, OnDestro
     try {
       for (let page = 1; ; page++) {
         const response = await firstValueFrom(
-          this.acquisitionService.getScenesFeed(page, 100, lifecycle),
+          this.acquisitionService.getScenesFeed(
+            page,
+            AcquisitionPageComponent.SELECTION_PAGE_SIZE,
+            lifecycle,
+          ),
         );
         if (version !== this.selectionVersion) return;
         if (response.page !== page || (response.hasMore && !response.items.length))
