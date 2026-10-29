@@ -35,6 +35,69 @@ model RequestAction {
   @@index([stashId, createdAt])
 }
 
+model RequestDiagnosticEvent {
+  id         String   @id
+  stashId    String
+  source     String
+  kind       String
+  label      String
+  occurredAt DateTime
+  observedAt DateTime @default(now())
+  @@index([stashId, occurredAt, id])
+}
+
+model RequestSearchAttempt {
+  id             String   @id
+  stashId        String
+  source         String
+  movieId        Int
+  commandId      Int?
+  mode           String
+  state          String
+  outcome        String   @default("UNKNOWN")
+  candidateCount Int?
+  rejectedCount  Int?
+  candidates     Json?
+  createdAt      DateTime @default(now())
+  finishedAt     DateTime?
+  @@index([stashId, createdAt, id])
+  @@index([state, mode, createdAt])
+}
+
+model RequestDiagnosticObservation {
+  stashId    String   @id
+  source     String
+  signature  String
+  checkedAt  DateTime @default(now())
+  activityAt DateTime @default(now())
+  code       String   @default("UNKNOWN")
+  label      String   @default("No search history")
+  detail     String   @default("")
+  priority   Int      @default(2)
+  performers String[] @default([])
+  performerText String @default("")
+  metadataAt DateTime?
+  metadataSource String?
+  requestedAt DateTime?
+  scene      SceneIndex @relation(fields: [stashId], references: [stashId])
+  @@index([code])
+}
+
+model RequestDiagnosticSync {
+  source    String   @id
+  since     DateTime
+  checkedAt DateTime?
+  error     String?
+}
+
+model HydraSearchSettings {
+  id         String  @id @default("default")
+  browserUrl String  @default("")
+  studio     Boolean @default(true)
+  performers Boolean @default(true)
+  title      Boolean @default(false)
+}
+
 model AdminUser {
   id                 String         @id @default(cuid())
   singletonKey       Int            @unique @default(1)
@@ -62,6 +125,7 @@ model AdminSession {
 
 model SceneIndex {
   stashId                String                 @id
+  diagnostics            RequestDiagnosticObservation?
   requestStatus          RequestStatus?
   requestUpdatedAt       DateTime?
   requestDismissedAt     DateTime?

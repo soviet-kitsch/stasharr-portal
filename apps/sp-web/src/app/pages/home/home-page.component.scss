@@ -1,5 +1,6 @@
 :host {
   display: block;
+  min-width: 0;
   min-height: 100dvh;
   color: var(--text-primary);
   font-family: var(--app-font-family);
@@ -22,6 +23,50 @@ h2,
 h3,
 p {
   margin: 0;
+}
+
+.home-action-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.35rem 0 1rem;
+}
+.home-context {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.home-context h1 {
+  font-size: 1.4rem;
+  line-height: 1.2;
+}
+.home-context p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.home-action-rail nav {
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .home-context {
+    display: block;
+  }
+  .home-context p {
+    margin-top: 0.4rem;
+  }
+  .home-action-rail nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    padding: 0.2rem 0 0.5rem;
+  }
+  .home-action-rail nav > * {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 
 .hero-shell {

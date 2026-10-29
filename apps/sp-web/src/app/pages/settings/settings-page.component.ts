@@ -24,6 +24,7 @@ export class SettingsPageComponent {
       label: 'Integrations',
       route: '/settings/integrations',
     },
+    { label: 'Acquisition', route: '/settings/acquisition' },
     {
       label: 'Indexing',
       route: '/settings/indexing',

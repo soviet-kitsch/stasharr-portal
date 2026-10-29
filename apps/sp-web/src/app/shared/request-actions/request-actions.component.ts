@@ -1,4 +1,5 @@
 import { newOperationKey } from '../../core/api/operation-key';
+import { RequestDiagnosticsComponent } from '../request-diagnostics/request-diagnostics.component';
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -21,10 +22,11 @@ interface ActionHistory {
 
 @Component({
   selector: 'app-request-actions',
-  imports: [Dialog, DatePipe, SceneRequestModalComponent],
+  imports: [Dialog, DatePipe, SceneRequestModalComponent, RequestDiagnosticsComponent],
   styleUrl: './request-actions.component.scss',
   template: `
     <div class="app-action-row request-actions">
+      <app-request-diagnostics [sceneId]="sceneId" [sceneTitle]="sceneTitle" />
       @if (tracked) {
         <button
           class="app-baseline-button secondary-action small"

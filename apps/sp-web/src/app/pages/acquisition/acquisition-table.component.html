@@ -1,0 +1,199 @@
+<main class="app-page-shell">
+  <header class="app-page-header">
+    <div>
+      <h1>Acquisition</h1>
+      <p class="app-page-lede">Track requests and resolve blockers.</p>
+    </div>
+    <button class="app-baseline-button" [disabled]="loading()" (click)="refresh()">Refresh</button>
+  </header>
+  <nav class="stage-filters" aria-label="Acquisition stages">
+    @for (stage of stages; track stage.id) {
+      <button
+        class="app-baseline-button"
+        [class.active]="this.stage === stage.id"
+        [attr.aria-pressed]="this.stage === stage.id"
+        (click)="chooseStage(stage.id)"
+      >
+        {{ stage.label }} <strong>{{ count(stage.id) }}</strong>
+      </button>
+    }
+  </nav>
+  <form class="filters" (ngSubmit)="apply()">
+    <div class="compact-filters">
+      <label
+        >Stage
+        <select name="stage" [(ngModel)]="stage" (ngModelChange)="apply()">
+          @for (item of stages; track item.id) {
+            <option [value]="item.id">{{ item.label }} ({{ count(item.id) }})</option>
+          }
+        </select></label
+      >
+      <label
+        >Status
+        <select name="blocker" [(ngModel)]="blocker" (ngModelChange)="apply()">
+          <option value="">All statuses</option>
+          @for (item of blockers; track item.id) {
+            <option [value]="item.id">
+              {{ item.label }} ({{ data()?.blockerCounts?.[item.id] ?? 0 }})
+            </option>
+          }
+        </select></label
+      >
+    </div>
+    <label
+      >Search scenes, studios or performers
+      <input type="search" name="q" [(ngModel)]="q" maxlength="160" placeholder="Search requests"
+    /></label>
+    <label
+      >Sort
+      <select name="sort" [(ngModel)]="sort" (ngModelChange)="apply()">
+        <option value="ATTENTION">Needs attention first</option>
+        <option value="OLDEST">Oldest request</option>
+        <option value="ACTIVITY">Latest activity</option>
+      </select></label
+    >
+    <button class="app-baseline-button" type="submit">Apply</button>
+  </form>
+  <nav class="blocker-filters" aria-label="Request blockers">
+    @for (item of blockers; track item.id) {
+      <button
+        class="app-baseline-button small"
+        [class.active]="blocker === item.id"
+        [attr.aria-pressed]="blocker === item.id"
+        (click)="chooseBlocker(item.id)"
+      >
+        {{ item.label }} {{ data()?.blockerCounts?.[item.id] ?? 0 }}
+      </button>
+    }
+  </nav>
+  <p class="muted">
+    History is captured automatically. Diagnostic searches are labelled separately.
+  </p>
+  @if (message()) {
+    <p role="status">{{ message() }}</p>
+  }
+  <div class="selection-bar">
+    <span>{{ selected().length }} selected</span
+    ><button
+      class="app-baseline-button small"
+      [disabled]="selecting() || loading() || !data()?.total"
+      (click)="selectAll()"
+    >
+      {{ selecting() ? 'Selecting…' : 'Select all matching (' + (data()?.total ?? 0) + ')' }}
+    </button>
+    @if (selected().length) {
+      <button class="app-baseline-button small" (click)="clear()">Clear selection</button>
+    }
+  </div>
+  <app-request-batch-actions [scenes]="selected()" (finished)="actionsFinished()" />
+  <div class="table-wrap" [attr.aria-busy]="loading()">
+    <table>
+      <caption class="sr-only">
+        Acquisition requests and their latest recorded status
+      </caption>
+      <thead>
+        <tr>
+          <th>
+            <input
+              type="checkbox"
+              aria-label="Select this page"
+              [checked]="pageSelected()"
+              [disabled]="selecting() || loading()"
+              (change)="togglePage()"
+            />
+          </th>
+          <th>Scene</th>
+          <th class="stage">Stage</th>
+          <th>Status</th>
+          <th class="activity">Last activity</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of data()?.items ?? []; track row.id) {
+          <tr>
+            <td>
+              <input
+                type="checkbox"
+                [attr.aria-label]="'Select ' + row.title"
+                [checked]="selectedRow(row.id)"
+                [disabled]="selecting() || loading()"
+                (change)="toggle(row)"
+              />
+            </td>
+            <td class="scene">
+              <a [routerLink]="['/scene', row.id]" [queryParams]="{ returnTo: routerUrl() }">{{
+                row.title
+              }}</a
+              ><small>
+                @if (row.studioId) {
+                  <a [routerLink]="['/studio', row.studioId]">{{ row.studio }}</a>
+                } @else {
+                  {{ row.studio }}
+                }
+                @if (row.performers.length) {
+                  · {{ row.performers.join(', ') }}
+                }
+              </small>
+            </td>
+            <td class="stage">{{ label(row.status.state) }}</td>
+            <td class="status">
+              <strong [attr.data-code]="row.diagnostics.code">{{ row.diagnostics.label }}</strong
+              ><small>{{ row.diagnostics.detail }}</small
+              ><small
+                >Checked
+                {{ row.checkedAt ? (row.checkedAt | date: 'short') : 'not yet confirmed' }}</small
+              >
+            </td>
+            <td class="activity">
+              <time>{{ row.activityAt | date: 'short' }}</time
+              ><small>Tracked since {{ row.requestedAt | date: 'shortDate' }}</small>
+            </td>
+            <td>
+              <div class="row-actions">
+                <app-request-diagnostics [sceneId]="row.id" [sceneTitle]="row.title" />
+                @if (data()?.hydraConfigured) {
+                  <app-hydra-search [sceneId]="row.id" [sceneTitle]="row.title" />
+                }
+                <details>
+                  <summary>Recovery actions</summary>
+                  <app-request-actions
+                    [sceneId]="row.id"
+                    [sceneTitle]="row.title"
+                    [condition]="row.reconciliation?.condition ?? null"
+                    (changed)="actionsFinished()"
+                  />
+                  @if (row.status.state === 'IMPORT_PENDING') {
+                    <app-import-match-review [sceneId]="row.id" (reconciled)="actionsFinished()" />
+                  }
+                </details>
+              </div>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="6">
+              {{ loading() ? 'Loading requests…' : 'No requests match these filters.' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <nav class="pagination" aria-label="Request pages">
+    <button
+      class="app-baseline-button"
+      [disabled]="page <= 1 || loading()"
+      (click)="navigate(page - 1)"
+    >
+      Previous</button
+    ><span>Page {{ page }} · {{ data()?.total ?? 0 }} matching</span
+    ><button
+      class="app-baseline-button"
+      [disabled]="!data()?.hasMore || loading()"
+      (click)="navigate(page + 1)"
+    >
+      Next
+    </button>
+  </nav>
+</main>

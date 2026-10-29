@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AcquisitionModule } from './acquisition/acquisition.module';
+import { DiagnosticsModule } from './diagnostics/diagnostics.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { HomeModule } from './home/home.module';
@@ -35,6 +36,7 @@ import { StudiosModule } from './studios/studios.module';
     IntegrationsModule,
     SetupModule,
     AcquisitionModule,
+    DiagnosticsModule,
     ScenesModule,
     RequestsModule,
     PerformersModule,

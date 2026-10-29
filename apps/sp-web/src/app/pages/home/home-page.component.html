@@ -1,38 +1,30 @@
 <main class="app-page-shell app-page-shell--xl">
-  <section class="hero-shell">
-    <div class="hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow">Home</p>
-        <h1>Your rails, now driven by saved scene filters.</h1>
-        <p class="lede">
-          Keep the built-in favorites rails, mix in your local library, add custom catalog scene
-          rails, and shape Home into a personal browsing screen instead of a fixed landing page.
-        </p>
-        <div class="hero-actions app-action-row">
-          <button type="button" class="hero-link secondary" (click)="openEditor()">
-            Customize Home
-          </button>
-          <a class="hero-link" [routerLink]="['/performers']">Find Favorite Performers</a>
-          <a class="hero-link secondary" [routerLink]="['/studios']">Find Favorite Studios</a>
-        </div>
-      </div>
-
-      <div class="hero-facts">
-        <div class="fact-card">
-          <span class="fact-label">Active Rails</span>
-          <strong>{{ activeRailCount() }}</strong>
-        </div>
-        <div class="fact-card">
-          <span class="fact-label">Custom Rails</span>
-          <strong>{{ customRailCount() }}</strong>
-        </div>
-        <div class="fact-card wide">
-          <span class="fact-label">Scenes Loaded</span>
-          <strong>{{ totalLoadedScenes() }}</strong>
-        </div>
-      </div>
+  <header class="home-action-rail">
+    <div class="home-context">
+      <h1>Home</h1>
+      <p>Saved discovery and library rails.</p>
     </div>
-  </section>
+    <nav class="app-action-row" aria-label="Home shortcuts">
+      <button class="app-baseline-button" type="button" (click)="openEditor()">
+        Customize Home
+      </button>
+      <a class="app-baseline-button" routerLink="/scenes">Search scenes</a>
+      <a class="app-baseline-button" routerLink="/performers">Search performers</a>
+      <a class="app-baseline-button" routerLink="/studios">Search studios</a>
+      <a
+        class="app-baseline-button"
+        routerLink="/library"
+        [queryParams]="{ sort: 'CREATED_AT', direction: 'DESC' }"
+        >Latest in library</a
+      >
+      <a
+        class="app-baseline-button"
+        routerLink="/acquisition"
+        [queryParams]="{ blocker: 'NEEDS_ATTENTION' }"
+        >Requests needing attention</a
+      >
+    </nav>
+  </header>
 
   @if (pageAlert(); as alert) {
     <section class="home-alert app-page-alert" data-testid="home-readiness-alert" role="status">

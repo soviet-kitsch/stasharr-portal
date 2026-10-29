@@ -316,6 +316,11 @@ describe('HomePageComponent', () => {
     const { fixture } = await renderPage();
     const component = fixture.componentInstance as any;
     const cards = fixture.nativeElement.querySelectorAll('app-scene-card');
+    expect(fixture.nativeElement.querySelector('.hero-shell')).toBeNull();
+    const shortcuts = fixture.nativeElement.querySelector('nav[aria-label="Home shortcuts"]');
+    expect(shortcuts?.textContent).toContain('Search scenes');
+    expect(shortcuts?.textContent).toContain('Requests needing attention');
+    expect(shortcuts?.textContent).toContain('Customize Home');
     const discoverySection = railSectionByTitle(fixture, 'Discovery Rail');
     const librarySection = railSectionByTitle(fixture, 'Library Rail');
     const requestButton = discoverySection.querySelector(

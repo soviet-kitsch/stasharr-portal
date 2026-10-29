@@ -160,6 +160,8 @@ jobs:
             assert.equal((await fetch(root+"/api/acquisition/scenes")).status,401);
             assert.equal(fs.statSync("/var/lib/stasharr/session-secret").mode & 0o777,0o600);
           '
+          docker exec -e PORTAL_CI_DIAGNOSTICS_CHECK=isolated -i "$CI_APP_NAME" \
+            node --input-type=module < scripts/check-diagnostics-runtime.mjs
           for container in "$CI_APP_NAME" "$CI_DB_NAME"; do
             docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container" | grep -F 'apparmor=unconfined'
           done

@@ -12,7 +12,8 @@ import { AppShellLayoutComponent } from './layouts/app-shell-layout/app-shell-la
 import { BootstrapPageComponent } from './features/auth/bootstrap-page.component';
 import { LoginPageComponent } from './features/auth/login-page.component';
 import { SetupPageComponent } from './features/setup/setup-page.component';
-import { AcquisitionPageComponent } from './pages/acquisition/acquisition-page.component';
+import { AcquisitionTableComponent } from './pages/acquisition/acquisition-table.component';
+import { HydraSettingsComponent } from './shared/request-diagnostics/hydra-settings.component';
 import { LibraryPageComponent } from './pages/library/library-page.component';
 import { ScenesPageComponent } from './pages/scenes/scenes-page.component';
 import { ScenePageComponent } from './pages/scene/scene-page.component';
@@ -63,7 +64,7 @@ export const routes: Routes = [
       },
       {
         path: 'acquisition',
-        component: AcquisitionPageComponent,
+        component: AcquisitionTableComponent,
       },
       {
         path: 'library',
@@ -89,6 +90,7 @@ export const routes: Routes = [
         path: 'settings',
         component: SettingsPageComponent,
         children: [
+          { path: 'acquisition', component: HydraSettingsComponent },
           {
             path: '',
             component: SettingsOverviewPageComponent,

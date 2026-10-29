@@ -12,6 +12,7 @@ export type RequestActionKind =
   | 'REQUEST'
   | 'RE_REQUEST'
   | 'SEARCH'
+  | 'DIAGNOSTIC_SEARCH'
   | 'DISMISS'
   | 'RESTORE';
 export type BeforeDispatch = (

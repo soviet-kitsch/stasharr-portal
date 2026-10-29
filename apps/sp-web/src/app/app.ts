@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { FullscreenToggleComponent } from './shared/fullscreen-toggle/fullscreen-toggle.component';
 import { RouterOutlet } from '@angular/router';
 import { ConfirmDialog } from 'primeng/confirmdialog';
 import { Toast } from 'primeng/toast';
@@ -10,6 +11,7 @@ import { ThemeToggleComponent } from './shared/theme-toggle/theme-toggle.compone
   imports: [
     RouterOutlet,
     ThemeToggleComponent,
+    FullscreenToggleComponent,
     ImageObscurationToggleComponent,
     Toast,
     ConfirmDialog,

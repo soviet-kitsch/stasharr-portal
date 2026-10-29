@@ -30,6 +30,7 @@ describe('app routes', () => {
     const settingsRoute = appShellChildren.find((route) => route.path === 'settings');
 
     expect(settingsRoute?.children?.map((route) => route.path)).toEqual([
+      'acquisition',
       '',
       'integrations',
       'indexing',

@@ -312,7 +312,8 @@ describe('StashdbAdapter', () => {
 
     expect(requestBody.query).toContain('scene_0: findScene(id: $id0)');
     expect(requestBody.query).toContain('scene_1: findScene(id: $id1)');
-    expect(requestBody.query).not.toContain('performers');
+    expect(requestBody.query).toContain('performers { performer { name } }');
+    expect(requestBody.query).not.toContain('is_favorite');
     expect(requestBody.query).not.toContain('tags');
     expect(requestBody.query).not.toContain('urls');
     expect(requestBody.variables).toEqual({

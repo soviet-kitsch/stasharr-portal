@@ -224,6 +224,7 @@ export interface StashdbScene {
 }
 
 export interface StashdbSceneMetadata {
+  performerNames?: string[];
   id: string;
   title: string;
   details: string | null;
@@ -296,6 +297,7 @@ export interface StashdbSceneDetails extends StashdbSceneMetadata {
 }
 
 type StashdbSceneMetadataSource = {
+  performers?: Array<{ performer?: { name?: unknown } | null }>;
   id?: unknown;
   title?: unknown;
   details?: unknown;
@@ -1610,6 +1612,7 @@ export class StashdbAdapter {
           scene_${index}: findScene(id: $id${index}) {
             id
             title
+            performers { performer { name } }
             details
             date
             release_date
@@ -1890,6 +1893,13 @@ export class StashdbAdapter {
 
     return {
       id: scene.id,
+      ...(Array.isArray(scene.performers)
+        ? {
+            performerNames: scene.performers
+              .map((p) => p.performer?.name)
+              .filter((n): n is string => typeof n === 'string'),
+          }
+        : {}),
       title: scene.title,
       details:
         typeof scene.details === 'string' && scene.details.trim().length > 0

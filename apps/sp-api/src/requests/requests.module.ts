@@ -18,5 +18,6 @@ import { StashModule } from '../providers/stash/stash.module';
   ],
   controllers: [RequestsController],
   providers: [RequestsService, RequestOperationsService],
+  exports: [RequestOperationsService],
 })
 export class RequestsModule {}
