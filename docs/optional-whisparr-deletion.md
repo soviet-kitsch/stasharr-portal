@@ -1,0 +1,13 @@
+# Optional Whisparr deletion
+
+Delete request defaults to removing Portal tracking only. For a single request, users may explicitly select **Also delete the scene and its files from Whisparr**. That loads a read-only preview of the exact StashDB match, native scene ID, entire scene folder and known media files. A second acknowledgment approves that specific folder. Bulk deletion remains Portal-only.
+
+Whisparr's native `DELETE /api/v3/movie/{id}?deleteFiles=true&addImportExclusion=false` removes the scene record and schedules deletion of its **whole folder**, including sidecars or other files in that folder. It uses Whisparr's recycle bin configuration; deletion may be permanent. Portal does not restore media when tracking is restored. Stash records and independent copies are retained; records referencing a removed path can lose access to that file. The download client is not modified by this feature.
+
+Native filesystem cleanup is asynchronous. History records that cleanup was requested, never that disk deletion is proven. If the response is lost, the durable action stays uncertain and blocks resubmission. **Item History → Check outcome** performs reads only. It requires both native-ID absence and a complete catalog list without that ID or StashDB ID. If the scene remains, resolve it in Whisparr before checking again; Portal will not automatically send another deletion. If the native acknowledgment was lost, history explicitly leaves the file-cleanup outcome unknown even when scene absence is confirmed.
+
+Previews expire after five minutes and are invalidated by a Portal restart. A signed preview binds the approved scene, folder, files, instance connection and catalog. These are rechecked before dispatch. Ambiguous/missing exact matches, shared/nested scene folders, paths outside an accessible root, files outside the scene folder, incomplete provider evidence and active commands/transfers block native deletion. The feature uses the existing durable request-action claim and operation key; successful replays do not send another DELETE. No schema migration or automatic deletion schedule is introduced.
+
+The release smoke test uses an in-process fake Whisparr and a fresh isolated database. Development and deployment verification never delete live media.
+
+Native behavior: [Whisparr MovieController](https://github.com/Whisparr/Whisparr/blob/eros/src/Whisparr.Api.V3/Movies/MovieController.cs), [MovieService](https://github.com/Whisparr/Whisparr/blob/eros/src/NzbDrone.Core/Movies/MovieService.cs), [asynchronous folder deletion](https://github.com/Whisparr/Whisparr/blob/eros/src/NzbDrone.Core/MediaFiles/MediaFileDeletionService.cs).

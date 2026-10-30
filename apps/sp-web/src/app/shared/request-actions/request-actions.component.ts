@@ -3,7 +3,7 @@ import { RequestDiagnosticsComponent } from '../request-diagnostics/request-diag
 import { Component, EventEmitter, Input, Output, ViewChild, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
-import { Dialog } from 'primeng/dialog';
+import { RequestDeletionComponent } from './request-deletion.component';
 import { ResponsiveActionsComponent, RowAction } from './responsive-actions.component';
 import { HydraSearchComponent } from '../request-diagnostics/hydra-search.component';
 import { ImportMatchReviewComponent } from '../import-match-review/import-match-review.component';
@@ -12,7 +12,7 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
 @Component({
   selector: 'app-request-actions',
   imports: [
-    Dialog,
+    RequestDeletionComponent,
     ResponsiveActionsComponent,
     HydraSearchComponent,
     ImportMatchReviewComponent,
@@ -43,42 +43,14 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
     @if (message()) {
       <p role="status">{{ message() }}</p>
     }
-    <p-dialog
-      styleClass="app-review-dialog"
-      header="Delete request from Portal?"
-      [visible]="deleteOpen()"
-      (visibleChange)="deleteOpen.set($event)"
-      [modal]="true"
-      [blockScroll]="true"
-      [appendTo]="'body'"
-      [closable]="!busy()"
-      [closeOnEscape]="!busy()"
-      [style]="{ width: '32rem', maxWidth: '95vw' }"
-    >
-      <p>{{ sceneTitle }}</p>
-      <p>
-        This removes the request from Portal's active queue. Whisparr entries, downloads and media
-        files remain unchanged. The history is kept, and you can restore the request.
-      </p>
-      <div class="app-action-row">
-        <button
-          class="app-baseline-button"
-          type="button"
-          [disabled]="busy()"
-          (click)="execute('dismiss')"
-        >
-          {{ busy() ? 'Removing…' : 'Delete from Portal' }}
-        </button>
-        <button
-          class="app-baseline-button"
-          type="button"
-          [disabled]="busy()"
-          (click)="deleteOpen.set(false)"
-        >
-          Cancel
-        </button>
-      </div>
-    </p-dialog>
+    <app-request-deletion
+      [open]="deleteOpen()"
+      [sceneId]="sceneId"
+      [sceneTitle]="sceneTitle"
+      (closed)="deleteOpen.set(false)"
+      (removed)="deleted($event)"
+      (needsOutcome)="details.show()"
+    />
     <app-scene-request-modal
       [open]="requestOpen()"
       [sceneId]="sceneId"
@@ -168,8 +140,12 @@ export class RequestActionsComponent {
   protected readonly requestOpen = signal(false);
   protected readonly deleteOpen = signal(false);
   protected readonly message = signal<string | null>(null);
+  protected deleted(message: string) {
+    this.message.set(message);
+    this.changed.emit();
+  }
   private keys = new Map<string, string>();
-  protected execute(action: 'search' | 'dismiss'): void {
+  protected execute(action: 'search'): void {
     if (this.busy()) return;
     this.busy.set(true);
     this.message.set(null);
@@ -199,7 +175,6 @@ export class RequestActionsComponent {
             )[result.outcome] ?? 'Outcome checked.',
           );
           this.deleteOpen.set(false);
-          if (action === 'dismiss') this.changed.emit();
         },
         error: (error) => {
           if (error.error?.actionState === 'FAILED' || (error.status && error.status !== 409))

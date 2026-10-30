@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
+import { createServer } from "node:http";
 
 // Intentionally accepts only the fresh, uniquely named CI smoke service.
 assert.equal(process.env.PORTAL_CI_DIAGNOSTICS_CHECK, "isolated");
@@ -43,6 +44,17 @@ try {
     0,
   );
   await api("/api/acquisition/table", {}, 401);
+  const unauthorizedScene = randomUUID();
+  await api(
+    `/api/requests/${unauthorizedScene}/whisparr-deletion-preview`,
+    {},
+    401,
+  );
+  await api(
+    `/api/requests/${unauthorizedScene}/delete-whisparr`,
+    { method: "POST", body: "{}" },
+    401,
+  );
   const bootstrap = await api(
     "/api/auth/bootstrap",
     {
@@ -165,6 +177,140 @@ try {
     ).rows[0].count,
     0,
   );
+  // Real HTTP/controller/DTO/Prisma proof against an in-process fake Whisparr only.
+  const deletionScene = randomUUID();
+  const synthetic = {
+    id: 987,
+    stashId: deletionScene,
+    title: "Synthetic deletion proof",
+    path: "/ci/library/synthetic",
+    hasFile: true,
+    added: "2026-10-30T00:00:00Z",
+  };
+  let deleted = false;
+  const nativeDeletes = [];
+  const mock = createServer((req, res) => {
+    const url = new URL(req.url, "http://127.0.0.1");
+    res.setHeader("Content-Type", "application/json");
+    if (req.method === "DELETE") {
+      nativeDeletes.push({
+        path: url.pathname,
+        deleteFiles: url.searchParams.get("deleteFiles"),
+        exclusion: url.searchParams.get("addImportExclusion"),
+      });
+      deleted = true;
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    let value = [];
+    if (url.pathname === "/api/v3/movie") value = deleted ? [] : [synthetic];
+    if (url.pathname === "/api/v3/movie/987") {
+      if (deleted) {
+        res.writeHead(404);
+        res.end("{}");
+        return;
+      }
+      value = synthetic;
+    }
+    if (url.pathname === "/api/v3/moviefile")
+      value = [
+        {
+          id: 988,
+          movieId: 987,
+          path: "/ci/library/synthetic/video.mp4",
+          size: 100,
+          dateAdded: "2026-10-30T00:00:00Z",
+        },
+      ];
+    if (url.pathname === "/api/v3/rootfolder")
+      value = [{ path: "/ci/library", accessible: true }];
+    if (url.pathname === "/api/v3/queue")
+      value = { totalRecords: 0, records: [] };
+    res.end(JSON.stringify(value));
+  });
+  await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
+  try {
+    const nativeUrl = `http://127.0.0.1:${mock.address().port}`;
+    for (const type of ["WHISPARR", "STASHDB"]) {
+      await database.query(
+        `INSERT INTO "IntegrationConfig" (id,type,enabled,status,"baseUrl","lastHealthyAt",config,"updatedAt")
+        VALUES ($1,$2,true,'CONFIGURED',$3,NOW(),$4,NOW())
+        ON CONFLICT (type) DO UPDATE SET enabled=true,status='CONFIGURED',"baseUrl"=EXCLUDED."baseUrl","lastHealthyAt"=NOW(),config=EXCLUDED.config,"updatedAt"=NOW()`,
+        [
+          randomUUID(),
+          type,
+          nativeUrl,
+          JSON.stringify(
+            type === "STASHDB"
+              ? { selectedForInstanceCatalogProvider: true }
+              : {},
+          ),
+        ],
+      );
+    }
+    const target = await (
+      await api(`/api/requests/${deletionScene}/whisparr-deletion-preview`)
+    ).json();
+    assert.equal(target.whisparrSceneId, 987);
+    assert.equal(target.folder, synthetic.path);
+    assert.equal(target.files.length, 1);
+    assert.equal(nativeDeletes.length, 0);
+    const operationKey = randomUUID();
+    await api(
+      `/api/requests/${deletionScene}/delete-whisparr`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          operationKey,
+          previewToken: target.previewToken,
+          confirmDeleteFiles: false,
+        }),
+      },
+      400,
+    );
+    assert.equal(nativeDeletes.length, 0);
+    const payload = JSON.stringify({
+      operationKey,
+      previewToken: target.previewToken,
+      confirmDeleteFiles: true,
+    });
+    const removed = await (
+      await api(
+        `/api/requests/${deletionScene}/delete-whisparr`,
+        { method: "POST", body: payload },
+        201,
+      )
+    ).json();
+    assert.equal(removed.outcome, "WHISPARR_SCENE_REMOVED");
+    assert.equal(removed.fileCleanup, "REQUESTED_NOT_VERIFIED");
+    await api(
+      `/api/requests/${deletionScene}/delete-whisparr`,
+      { method: "POST", body: payload },
+      201,
+    );
+    assert.deepEqual(nativeDeletes, [
+      { path: "/api/v3/movie/987", deleteFiles: "true", exclusion: "false" },
+    ]);
+    const action = (
+      await database.query(
+        'SELECT kind,state FROM "RequestAction" WHERE id=$1',
+        [operationKey],
+      )
+    ).rows[0];
+    assert.deepEqual(action, { kind: "DELETE_WHISPARR", state: "SUCCEEDED" });
+    const request = (
+      await database.query(
+        'SELECT "dismissedAt","activeActionId" FROM "Request" WHERE "stashId"=$1',
+        [deletionScene],
+      )
+    ).rows[0];
+    assert.ok(request.dismissedAt);
+    assert.equal(request.activeActionId, null);
+  } finally {
+    await database.query('UPDATE "IntegrationConfig" SET enabled=false');
+    await new Promise((resolve) => mock.close(resolve));
+  }
   console.log(
     "Isolated diagnostics runtime passed: authenticated table/filter/cursor/settings contracts, real Prisma queries, no connected acquisition services.",
   );

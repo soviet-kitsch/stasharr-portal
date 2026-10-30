@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { RequestOptionsDto } from './dto/request-options.dto';
 import { SubmitSceneRequestDto } from './dto/submit-scene-request.dto';
 import { SubmitSceneRequestResponseDto } from './dto/submit-scene-request-response.dto';
 import { ResumeSceneRequestDto } from './dto/resume-scene-request.dto';
+import { RequestDeletionService } from './request-deletion.service';
+import { DeleteWhisparrRequestDto } from './dto/delete-whisparr-request.dto';
 import { RequestsService } from './requests.service';
 import {
   BatchRequestActionDto,
@@ -11,7 +21,10 @@ import {
 
 @Controller('api/requests')
 export class RequestsController {
-  constructor(private readonly requestsService: RequestsService) {}
+  constructor(
+    private readonly requestsService: RequestsService,
+    private readonly deletions: RequestDeletionService,
+  ) {}
 
   @Post('batch/preview')
   preview(@Body() dto: BatchRequestActionDto) {
@@ -29,8 +42,25 @@ export class RequestsController {
   }
 
   @Post(':stashId/outcome')
-  outcome(@Param('stashId') id: string) {
-    return this.requestsService.checkOutcome(id);
+  async outcome(@Param('stashId') id: string) {
+    return (
+      (await this.deletions.recoverIfNeeded(id)) ??
+      this.requestsService.checkOutcome(id)
+    );
+  }
+
+  @Get(':stashId/whisparr-deletion-preview')
+  @Header('Cache-Control', 'no-store')
+  deletionPreview(@Param('stashId') id: string) {
+    return this.deletions.preview(id);
+  }
+
+  @Post(':stashId/delete-whisparr')
+  deleteWhisparr(
+    @Param('stashId') id: string,
+    @Body() dto: DeleteWhisparrRequestDto,
+  ) {
+    return this.deletions.remove(id, dto);
   }
 
   @Post(':stashId/search')

@@ -12,6 +12,7 @@ export function requestOutcomeMessage(outcome: string | undefined): string {
         NEEDS_IDENTIFICATION: 'The file is imported. Review its Stash match or identification.',
         IMPORT_PENDING: 'The existing download needs import review in Whisparr.',
         UPSTREAM_BLOCKED: 'The existing Whisparr queue entry needs attention.',
+        WHISPARR_SCENE_REMOVED: 'Whisparr scene removed; file cleanup has a separate outcome.',
         DISMISSED: 'Removed from Portal only.',
         RESTORED: 'Portal tracking restored.',
         OUTCOME_UNKNOWN: 'The outcome remains unknown. Check it before retrying.',
