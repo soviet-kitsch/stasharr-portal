@@ -63,3 +63,7 @@ summary {
     margin-bottom: 0.5rem;
   }
 }
+
+:host(.triggerless) {
+  display: contents;
+}

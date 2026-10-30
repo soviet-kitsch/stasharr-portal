@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { Subscription, finalize } from 'rxjs';
 import { Dialog } from 'primeng/dialog';
+import { Tooltip } from 'primeng/tooltip';
 
 export interface ImportMatchReview {
   sceneId: string;
@@ -46,23 +47,32 @@ export interface ImportMatchReview {
 
 @Component({
   selector: 'app-import-match-review',
-  imports: [DatePipe, Dialog],
+  imports: [DatePipe, Dialog, Tooltip],
+  host: { '[class.triggerless]': '!showTrigger' },
   styleUrl: './import-match-review.component.scss',
   template: `
-    <button
-      class="app-baseline-button"
-      [class.app-icon-button]="compact"
-      [attr.aria-label]="compact ? 'Review Stash match' : null"
-      [attr.title]="compact ? 'Review Stash match' : null"
-      type="button"
-      (click)="show()"
-    >
-      @if (compact) {
-        <i class="pi pi-database" aria-hidden="true"></i>
-      } @else {
-        Review Stash match
-      }
-    </button>
+    @if (showTrigger) {
+      <button
+        class="app-baseline-button"
+        [class.app-icon-button]="compact"
+        [attr.aria-label]="compact ? 'Review Stash match' : null"
+        [pTooltip]="'Review Stash match'"
+        [tooltipDisabled]="!compact"
+        tooltipEvent="both"
+        tooltipPosition="top"
+        [showDelay]="0"
+        [hideDelay]="0"
+        appendTo="body"
+        type="button"
+        (click)="show()"
+      >
+        @if (compact) {
+          <i class="pi pi-database" aria-hidden="true"></i>
+        } @else {
+          Review Stash match
+        }
+      </button>
+    }
     <p-dialog
       header="Review imported file and Stash match"
       [visible]="open()"
@@ -243,6 +253,7 @@ export interface ImportMatchReview {
 export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
   @Input({ required: true }) sceneId = '';
   @Input() compact = false;
+  @Input() showTrigger = true;
   @Output() reconciled = new EventEmitter<void>();
   protected readonly reconciling = signal(false);
   private didReconcile = false;
@@ -252,7 +263,7 @@ export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly review = signal<ImportMatchReview | null>(null);
-  protected show(): void {
+  show(): void {
     this.open.set(true);
     this.load();
   }

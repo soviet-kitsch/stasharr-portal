@@ -4,14 +4,19 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Dialog } from 'primeng/dialog';
+import { Tooltip } from 'primeng/tooltip';
 import { forkJoin } from 'rxjs';
 import { HydraSettings, HydraTerms, hydraLink, hydraQuery } from './hydra-search.util';
 
 @Component({
   selector: 'app-hydra-search',
-  imports: [Dialog, FormsModule, RouterLink, NgTemplateOutlet],
+  imports: [Tooltip, Dialog, FormsModule, RouterLink, NgTemplateOutlet],
+  host: { '[class.triggerless]': '!showTrigger' },
   styles: [
     `
+      :host(.triggerless) {
+        display: contents;
+      }
       label {
         display: block;
         margin: 0.65rem 0;
@@ -26,20 +31,28 @@ import { HydraSettings, HydraTerms, hydraLink, hydraQuery } from './hydra-search
       }
     `,
   ],
-  template: ` <button
-      class="app-baseline-button small"
-      [class.app-icon-button]="compact"
-      [attr.aria-label]="compact ? 'Search Hydra' : null"
-      [attr.title]="compact ? 'Search Hydra' : null"
-      type="button"
-      (click)="show()"
-    >
-      @if (compact) {
-        <i class="pi pi-globe" aria-hidden="true"></i>
-      } @else {
-        Search Hydra
-      }
-    </button>
+  template: ` @if (showTrigger) {
+      <button
+        class="app-baseline-button small"
+        [class.app-icon-button]="compact"
+        [attr.aria-label]="compact ? 'Search Hydra' : null"
+        [pTooltip]="'Search Hydra'"
+        [tooltipDisabled]="!compact"
+        tooltipEvent="both"
+        tooltipPosition="top"
+        [showDelay]="0"
+        [hideDelay]="0"
+        appendTo="body"
+        type="button"
+        (click)="show()"
+      >
+        @if (compact) {
+          <i class="pi pi-globe" aria-hidden="true"></i>
+        } @else {
+          Search Hydra
+        }
+      </button>
+    }
     <ng-template #searchBody>
       <div class="hydra-body">
         <p>{{ sceneTitle }}</p>
@@ -150,6 +163,7 @@ export class HydraSearchComponent {
   @Input({ required: true }) sceneId = '';
   @Input() sceneTitle = '';
   @Input() compact = false;
+  @Input() showTrigger = true;
   private readonly http = inject(HttpClient);
   protected readonly open = signal(false);
   protected readonly loading = signal(false);
@@ -161,7 +175,7 @@ export class HydraSearchComponent {
   protected selectedPerformers: string[] = [];
   protected query = '';
   protected edited = false;
-  protected show() {
+  show() {
     this.open.set(true);
     this.loading.set(true);
     this.error.set('');

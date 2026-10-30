@@ -95,10 +95,16 @@ td.status small:first-of-type {
   overflow: hidden;
 }
 .row-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  min-width: 10rem;
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+th.actions {
+  text-align: right;
+}
+td.actions {
+  width: clamp(10rem, 28vw, 23rem);
+  min-width: 0;
 }
 .pagination {
   justify-content: space-between;
@@ -125,9 +131,7 @@ td.status small:first-of-type {
   td.status {
     min-width: 9rem;
   }
-  .row-actions {
-    min-width: 8rem;
-  }
+
   th,
   td {
     padding: 0.6rem 0.4rem;
@@ -262,5 +266,12 @@ td.status small:first-of-type {
   }
   .scene-summary {
     gap: 0.55rem;
+  }
+}
+
+@media (max-width: 500px) {
+  td.actions {
+    width: auto;
+    justify-self: stretch;
   }
 }

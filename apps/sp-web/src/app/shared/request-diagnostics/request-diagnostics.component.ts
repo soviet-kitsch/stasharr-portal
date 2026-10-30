@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter, OnDestroy, inject, signal } fro
 import { DatePipe } from '@angular/common';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Dialog } from 'primeng/dialog';
+import { Tooltip } from 'primeng/tooltip';
 import { newOperationKey } from '../../core/api/operation-key';
 import { requestOutcomeMessage } from '../request-actions/request-outcome';
 import { HydraSearchComponent } from './hydra-search.component';
@@ -73,7 +74,7 @@ interface Activity {
 @Component({
   selector: 'app-request-diagnostics',
   host: { '[class.triggerless]': '!showTrigger' },
-  imports: [Dialog, DatePipe, HydraSearchComponent],
+  imports: [Tooltip, Dialog, DatePipe, HydraSearchComponent],
   templateUrl: './request-diagnostics.component.html',
   styleUrl: './request-diagnostics.component.scss',
 })

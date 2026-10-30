@@ -1,0 +1,96 @@
+<div
+  #toolbar
+  class="responsive-actions"
+  [class.compact]="compactView()"
+  role="group"
+  aria-label="Item actions"
+>
+  <span #probe class="action-size-probe" aria-hidden="true"></span>
+  @for (action of visible(); track action.key) {
+    @if (action.href) {
+      <a
+        class="app-baseline-button small"
+        [class.app-icon-button]="compactView()"
+        [href]="action.disabled ? null : action.href"
+        target="_blank"
+        rel="noopener noreferrer"
+        [attr.aria-label]="action.label"
+        [attr.aria-disabled]="action.disabled || null"
+        [attr.tabindex]="action.disabled ? -1 : null"
+        [pTooltip]="action.label"
+        [tooltipDisabled]="!compactView()"
+        tooltipEvent="both"
+        tooltipPosition="top"
+        [showDelay]="0"
+        [hideDelay]="0"
+        appendTo="body"
+        (click)="activate(action, $event)"
+      >
+        <i [class]="action.icon" aria-hidden="true"></i>
+        @if (!compactView()) {
+          {{ action.label }}
+        }
+      </a>
+    } @else {
+      <button
+        class="app-baseline-button small"
+        [class.app-icon-button]="compactView()"
+        type="button"
+        [disabled]="action.disabled"
+        [attr.aria-label]="action.label"
+        [pTooltip]="action.label"
+        [tooltipDisabled]="!compactView()"
+        tooltipEvent="both"
+        tooltipPosition="top"
+        [showDelay]="0"
+        [hideDelay]="0"
+        appendTo="body"
+        (click)="activate(action, $event)"
+      >
+        <i [class]="action.icon" aria-hidden="true"></i>
+        @if (!compactView()) {
+          {{ action.label }}
+        }
+      </button>
+    }
+  }
+  @if (hidden().length) {
+    <button
+      #overflowTrigger
+      class="app-baseline-button app-icon-button"
+      type="button"
+      aria-label="More request actions"
+      pTooltip="More request actions"
+      tooltipEvent="both"
+      tooltipPosition="top"
+      [showDelay]="0"
+      [hideDelay]="0"
+      appendTo="body"
+      (click)="toggleOverflow($event)"
+    >
+      <i class="pi pi-ellipsis-v" aria-hidden="true"></i>
+    </button>
+  }
+  <p-menu
+    #overflow
+    [model]="menuItems()"
+    [popup]="true"
+    appendTo="body"
+    styleClass="app-request-overflow"
+    (onShow)="alignOverflow()"
+  >
+    <ng-template #item let-item>
+      <a
+        class="p-menu-item-link"
+        [attr.href]="item.disabled ? null : item.url"
+        [attr.target]="item.url && !item.disabled ? '_blank' : null"
+        [attr.rel]="item.url ? 'noopener noreferrer' : null"
+        [attr.aria-disabled]="item.disabled || null"
+        tabindex="-1"
+      >
+        <span [class]="item.icon + ' p-menu-item-icon'" aria-hidden="true"></span
+        ><span class="p-menu-item-label">{{ item.label }}</span>
+      </a>
+    </ng-template>
+  </p-menu>
+</div>

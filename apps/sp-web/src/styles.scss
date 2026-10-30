@@ -1026,10 +1026,13 @@ body {
   }
 }
 
+:root {
+  --app-icon-button-size: 2.25rem;
+}
 .app-baseline-button.app-icon-button {
-  width: 2.25rem;
-  height: 2.25rem;
-  min-width: 2.25rem;
+  width: var(--app-icon-button-size);
+  height: var(--app-icon-button-size);
+  min-width: var(--app-icon-button-size);
   padding: 0;
   flex: 0 0 auto;
   .pi {
@@ -1041,9 +1044,7 @@ body {
   max-width: calc(100vw - 1rem);
 }
 @media (pointer: coarse) {
-  .app-baseline-button.app-icon-button {
-    width: 2.75rem;
-    height: 2.75rem;
-    min-width: 2.75rem;
+  :root {
+    --app-icon-button-size: 2.75rem;
   }
 }

@@ -5,6 +5,8 @@ import { AppNotificationsService } from '../../core/notifications/app-notificati
 import { RequestActionsComponent } from './request-actions.component';
 import { RequestBatchActionsComponent } from './request-batch-actions.component';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
+import { By } from '@angular/platform-browser';
+import { ResponsiveActionsComponent } from './responsive-actions.component';
 import { FormGroup } from '@angular/forms';
 
 describe('request action controls', () => {
@@ -44,6 +46,13 @@ describe('request action controls', () => {
     );
   }
   async function overflowAction(fixture: any, label: string) {
+    const direct = fixture.nativeElement.querySelector(`[aria-label="${label}"]`);
+    if (direct) {
+      direct.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      return;
+    }
     fixture.nativeElement.querySelector('[aria-label="More request actions"]').click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -93,6 +102,10 @@ describe('request action controls', () => {
     const fixture = single();
     fixture.componentRef.setInput('compact', true);
     fixture.detectChanges();
+    (
+      fixture.debugElement.query(By.directive(ResponsiveActionsComponent)).componentInstance as any
+    ).slots.set(1);
+    fixture.detectChanges();
     const more = fixture.nativeElement.querySelector('[aria-label="More request actions"]');
     more.click();
     fixture.detectChanges();
@@ -109,30 +122,30 @@ describe('request action controls', () => {
     http.expectNone((r) => r.method === 'POST');
     fixture.destroy();
   });
-  it('has exactly one Item History entry and opens one combined dialog without a row trigger', async () => {
+  it('shows one Item History control inline when it fits and opens the combined dialog', async () => {
     const fixture = single();
     fixture.componentRef.setInput('compact', true);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-request-diagnostics button')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('[aria-label="Item History"]')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('[aria-label="More request actions"]')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Request details');
     http.expectNone(() => true);
     await overflowAction(fixture, 'Item History');
     http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
-    http
-      .expectOne('/api/requests/scene-1/history')
-      .flush({
-        dismissed: false,
-        activeActionId: null,
-        actions: [
-          {
-            id: 'a',
-            kind: 'RE_REQUEST',
-            state: 'SUCCEEDED',
-            createdAt: '2026-10-30',
-            result: { message: 'Existing acquisition reused.' },
-          },
-        ],
-      });
+    http.expectOne('/api/requests/scene-1/history').flush({
+      dismissed: false,
+      activeActionId: null,
+      actions: [
+        {
+          id: 'a',
+          kind: 'RE_REQUEST',
+          state: 'SUCCEEDED',
+          createdAt: '2026-10-30',
+          result: { message: 'Existing acquisition reused.' },
+        },
+      ],
+    });
     fixture.detectChanges();
     await fixture.whenStable();
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);

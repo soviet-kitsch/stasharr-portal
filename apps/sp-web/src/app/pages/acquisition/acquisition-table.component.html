@@ -106,7 +106,7 @@
           <th class="stage">Stage</th>
           <th>Status</th>
           <th class="activity">Last activity</th>
-          <th>Actions</th>
+          <th class="actions">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -177,7 +177,7 @@
               <time>{{ row.activityAt | date: 'short' }}</time
               ><small>Tracked since {{ row.requestedAt | date: 'shortDate' }}</small>
             </td>
-            <td>
+            <td class="actions">
               <div class="row-actions">
                 <app-request-actions
                   [sceneId]="row.id"
@@ -186,25 +186,10 @@
                   [searchEnabled]="row.status.state !== 'IMPORT_PENDING'"
                   [compact]="true"
                   [whisparrViewUrl]="row.whisparrViewUrl"
+                  [hydraAvailable]="!!data()?.hydraConfigured"
+                  [importReviewAvailable]="row.status.state === 'IMPORT_PENDING'"
                   (changed)="actionsFinished()"
-                >
-                  @if (row.status.state === 'IMPORT_PENDING') {
-                    <app-import-match-review
-                      requestPrimary
-                      [sceneId]="row.id"
-                      [compact]="true"
-                      (reconciled)="actionsFinished()"
-                    />
-                  }
-                  @if (data()?.hydraConfigured) {
-                    <app-hydra-search
-                      requestPrimary
-                      [sceneId]="row.id"
-                      [sceneTitle]="row.title"
-                      [compact]="true"
-                    />
-                  }
-                </app-request-actions>
+                />
               </div>
             </td>
           </tr>

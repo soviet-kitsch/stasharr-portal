@@ -8,10 +8,8 @@ import {
   AcquisitionSceneItem,
   AcquisitionCountsByLifecycle,
 } from '../../core/api/acquisition.types';
-import { HydraSearchComponent } from '../../shared/request-diagnostics/hydra-search.component';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
 import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
-import { ImportMatchReviewComponent } from '../../shared/import-match-review/import-match-review.component';
 
 interface Row extends AcquisitionSceneItem {
   diagnostics: { code: string; label: string; detail: string };
@@ -39,10 +37,8 @@ interface Table {
     DatePipe,
     FormsModule,
     RouterLink,
-    HydraSearchComponent,
     RequestActionsComponent,
     RequestBatchActionsComponent,
-    ImportMatchReviewComponent,
   ],
   templateUrl: './acquisition-table.component.html',
   styleUrl: './acquisition-table.component.scss',

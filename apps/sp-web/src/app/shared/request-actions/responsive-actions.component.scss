@@ -1,0 +1,30 @@
+:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.responsive-actions {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+  contain: inline-size;
+}
+.responsive-actions.compact {
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+.action-size-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  width: var(--app-icon-button-size, 2.25rem);
+  height: 0;
+}
+p-menu {
+  display: contents;
+}

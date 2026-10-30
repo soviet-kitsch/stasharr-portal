@@ -2,24 +2,11 @@
   display: block;
   max-width: 100%;
 }
-.request-actions,
-.batch-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-:host .app-baseline-button {
-  max-width: 100%;
-  white-space: normal;
-  justify-content: center;
+.request-actions {
+  min-width: 0;
+  width: 100%;
 }
 p {
   line-height: 1.55;
   overflow-wrap: anywhere;
-}
-.request-actions.compact {
-  gap: 0.25rem;
-  flex-wrap: nowrap;
-  margin: 0;
 }

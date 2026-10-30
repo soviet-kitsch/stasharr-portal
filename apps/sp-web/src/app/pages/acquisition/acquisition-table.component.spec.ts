@@ -95,7 +95,7 @@ describe('acquisition table', () => {
     expect(fixture.nativeElement.querySelectorAll('.scene-thumbnail .pi-image')).toHaveLength(2);
     fixture.destroy();
   });
-  it('keeps primary icon actions visible and Item History in overflow and swaps search for match review on imports', () => {
+  it('includes exactly the eligible row actions and swaps search for match review on imports', () => {
     const { fixture, component } = setup();
     const controls = () =>
       Array.from(fixture.nativeElement.querySelectorAll('.request-actions button')).map(
@@ -105,7 +105,8 @@ describe('acquisition table', () => {
       'Re-request',
       'Search again',
       'Search Hydra',
-      'More request actions',
+      'Item History',
+      'Delete request',
     ]);
     component.data.set(response([{ ...row('imported'), status: { state: 'IMPORT_PENDING' } }]));
     fixture.detectChanges();
@@ -113,7 +114,8 @@ describe('acquisition table', () => {
       'Re-request',
       'Review Stash match',
       'Search Hydra',
-      'More request actions',
+      'Item History',
+      'Delete request',
     ]);
     expect(fixture.nativeElement.querySelector('.row-actions details')).toBeNull();
     http.expectNone((r) => r.method === 'POST');

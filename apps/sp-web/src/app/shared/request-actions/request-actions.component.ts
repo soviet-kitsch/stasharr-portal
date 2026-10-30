@@ -4,86 +4,36 @@ import { Component, EventEmitter, Input, Output, ViewChild, inject, signal } fro
 import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
 import { Dialog } from 'primeng/dialog';
-import { Menu } from 'primeng/menu';
-import { MenuItem } from 'primeng/api';
+import { ResponsiveActionsComponent, RowAction } from './responsive-actions.component';
+import { HydraSearchComponent } from '../request-diagnostics/hydra-search.component';
+import { ImportMatchReviewComponent } from '../import-match-review/import-match-review.component';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
 
 @Component({
   selector: 'app-request-actions',
-  imports: [Dialog, Menu, SceneRequestModalComponent, RequestDiagnosticsComponent],
+  imports: [
+    Dialog,
+    ResponsiveActionsComponent,
+    HydraSearchComponent,
+    ImportMatchReviewComponent,
+    SceneRequestModalComponent,
+    RequestDiagnosticsComponent,
+  ],
   styleUrl: './request-actions.component.scss',
   template: `
-    <div class="app-action-row request-actions" [class.compact]="compact">
-      @if (tracked) {
-        <button
-          class="app-baseline-button secondary-action small"
-          type="button"
-          [disabled]="busy()"
-          [class.app-icon-button]="compact"
-          [attr.aria-label]="compact ? 'Re-request' : null"
-          [attr.title]="compact ? 'Re-request' : null"
-          (click)="requestOpen.set(true)"
-        >
-          @if (compact) {
-            <i class="pi pi-cloud-download" aria-hidden="true"></i>
-          } @else {
-            Re-request
-          }
-        </button>
-      }
-      @if (tracked && searchEnabled && (!condition || condition === 'WAITING_FOR_RELEASE')) {
-        <button
-          class="app-baseline-button secondary-action small"
-          type="button"
-          [disabled]="busy()"
-          [class.app-icon-button]="compact"
-          [attr.aria-label]="compact ? 'Search again' : null"
-          [attr.title]="compact ? 'Search again' : null"
-          (click)="execute('search')"
-        >
-          @if (compact) {
-            <i class="pi pi-search" aria-hidden="true"></i>
-          } @else {
-            Search again
-          }
-        </button>
-      }
-      <ng-content select="[requestPrimary]" />
-      @if (whisparrViewUrl) {
-        <a
-          class="app-baseline-button small"
-          [class.app-icon-button]="compact"
-          [href]="whisparrViewUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          [attr.aria-label]="compact ? 'Open in Whisparr' : null"
-          [attr.title]="compact ? 'Open in Whisparr' : null"
-        >
-          @if (compact) {
-            <i class="pi pi-external-link" aria-hidden="true"></i>
-          } @else {
-            Open in Whisparr
-          }
-        </a>
-      }
-      <button
-        class="app-baseline-button app-icon-button"
-        type="button"
-        aria-label="More request actions"
-        title="More request actions"
-        [disabled]="busy()"
-        (click)="overflow.toggle($event)"
-      >
-        <i class="pi pi-ellipsis-v" aria-hidden="true"></i>
-      </button>
-      <p-menu
-        #overflow
-        [model]="overflowItems"
-        [popup]="true"
-        appendTo="body"
-        styleClass="app-request-overflow"
-      />
+    <div class="request-actions">
+      <app-responsive-actions [actions]="rowActions" [compact]="compact" />
     </div>
+    @if (hydraAvailable) {
+      <app-hydra-search [sceneId]="sceneId" [sceneTitle]="sceneTitle" [showTrigger]="false" />
+    }
+    @if (importReviewAvailable) {
+      <app-import-match-review
+        [sceneId]="sceneId"
+        [showTrigger]="false"
+        (reconciled)="changed.emit()"
+      />
+    }
     <app-request-diagnostics
       [sceneId]="sceneId"
       [sceneTitle]="sceneTitle"
@@ -148,23 +98,69 @@ export class RequestActionsComponent {
   @Input() searchEnabled = true;
   @Input() whisparrViewUrl: string | null = null;
   @ViewChild(RequestDiagnosticsComponent) protected details!: RequestDiagnosticsComponent;
-  protected get overflowItems(): MenuItem[] {
-    return [
-      {
-        label: 'Item History',
-        icon: 'pi pi-history',
-        command: () => this.details.show(),
-      },
-      ...(this.tracked
-        ? [
-            {
-              label: 'Delete request',
-              icon: 'pi pi-trash',
-              command: () => this.deleteOpen.set(true),
-            },
-          ]
-        : []),
-    ];
+  @Input() hydraAvailable = false;
+  @Input() importReviewAvailable = false;
+  @ViewChild(HydraSearchComponent) private hydra?: HydraSearchComponent;
+  @ViewChild(ImportMatchReviewComponent) private matchReview?: ImportMatchReviewComponent;
+  protected get rowActions(): RowAction[] {
+    const actions: RowAction[] = [];
+    if (this.tracked)
+      actions.push({
+        key: 'rerequest',
+        label: 'Re-request',
+        icon: 'pi pi-cloud-download',
+        disabled: this.busy(),
+        run: () => this.requestOpen.set(true),
+      });
+    if (
+      this.tracked &&
+      this.searchEnabled &&
+      (!this.condition || this.condition === 'WAITING_FOR_RELEASE')
+    )
+      actions.push({
+        key: 'search',
+        label: 'Search again',
+        icon: 'pi pi-search',
+        disabled: this.busy(),
+        run: () => this.execute('search'),
+      });
+    if (this.importReviewAvailable)
+      actions.push({
+        key: 'stash',
+        label: 'Review Stash match',
+        icon: 'pi pi-database',
+        run: () => this.matchReview?.show(),
+      });
+    if (this.hydraAvailable)
+      actions.push({
+        key: 'hydra',
+        label: 'Search Hydra',
+        icon: 'pi pi-globe',
+        run: () => this.hydra?.show(),
+      });
+    if (this.whisparrViewUrl)
+      actions.push({
+        key: 'whisparr',
+        label: 'Open in Whisparr',
+        icon: 'pi pi-external-link',
+        href: this.whisparrViewUrl,
+      });
+    actions.push({
+      key: 'history',
+      label: 'Item History',
+      icon: 'pi pi-history',
+      disabled: this.busy(),
+      run: () => this.details.show(),
+    });
+    if (this.tracked)
+      actions.push({
+        key: 'delete',
+        label: 'Delete request',
+        icon: 'pi pi-trash',
+        disabled: this.busy(),
+        run: () => this.deleteOpen.set(true),
+      });
+    return actions;
   }
   @Output() changed = new EventEmitter<void>();
   private readonly http = inject(HttpClient);
