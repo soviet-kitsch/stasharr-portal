@@ -424,8 +424,8 @@ export class StashAdapter {
         const refs = (raw.stash_ids ?? []).filter(
           (ref: any) => resolveCatalogProviderKey(ref.endpoint) === provider,
         );
+        // Manual imports may lack scene catalog IDs; source, studio and file duration still must agree.
         if (
-          !refs.length ||
           !raw.studio?.stash_ids?.some(
             (ref: any) =>
               resolveCatalogProviderKey(ref.endpoint) === provider &&

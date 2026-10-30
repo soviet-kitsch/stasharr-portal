@@ -8,6 +8,7 @@ import {
   AcquisitionSceneItem,
   AcquisitionCountsByLifecycle,
 } from '../../core/api/acquisition.types';
+import { StashSearchAllComponent } from '../../shared/request-actions/stash-search-all.component';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
 import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
 
@@ -35,6 +36,7 @@ interface Table {
   selector: 'app-acquisition-table',
   imports: [
     DatePipe,
+    StashSearchAllComponent,
     FormsModule,
     RouterLink,
     RequestActionsComponent,

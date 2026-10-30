@@ -38,13 +38,11 @@ describe('Stash duplicate catalog source identity', () => {
     fetchMock = jest.fn();
     global.fetch = fetchMock;
     identities = {
-      get: jest
-        .fn()
-        .mockResolvedValue({
-          urls: [url],
-          studioId: 'studio-1',
-          duration: 3675,
-        }),
+      get: jest.fn().mockResolvedValue({
+        urls: [url],
+        studioId: 'studio-1',
+        duration: 3675,
+      }),
     };
     adapter = new StashAdapter(
       { recordSuccess: jest.fn(), recordFailure: jest.fn() } as any,
@@ -98,7 +96,9 @@ describe('Stash duplicate catalog source identity', () => {
     'different-provider',
     'different-duration',
     'no-file',
-    'no-catalog-link',
+    'no-studio-link',
+    'zero-size',
+    'missing-duration',
   ])('refuses %s rather than trusting title or filename', async (reason) => {
     const scene = candidate();
     if (reason === 'different-url')
@@ -109,8 +109,21 @@ describe('Stash duplicate catalog source identity', () => {
       scene.studio.stash_ids[0].endpoint = 'https://fansdb.cc/graphql';
     if (reason === 'different-duration') scene.files[0].duration = 3800;
     if (reason === 'no-file') scene.files = [];
-    if (reason === 'no-catalog-link') scene.stash_ids = [];
+    if (reason === 'no-studio-link') scene.studio.stash_ids = [];
+    if (reason === 'zero-size') scene.files[0].size = 0;
+    if (reason === 'missing-duration') scene.files[0].duration = 0;
     expect(await find(scene)).toEqual([]);
+  });
+  it('matches a direct acquisition with no scene catalog IDs using the verified source, studio and duration', async () => {
+    const scene = candidate();
+    scene.stash_ids = [];
+    const copies = await find(scene);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).toMatchObject({
+      id: '128',
+      evidence: 'SOURCE_IDENTITY',
+      sourceIdentity: { catalogIds: [] },
+    });
   });
   it('fails closed on an incomplete response', async () => {
     await expect(find(candidate(), 3)).rejects.toThrow('incomplete');
@@ -153,24 +166,20 @@ describe('Catalog source identities', () => {
   it('reads only the selected configured provider and obtains its authoritative source URL', async () => {
     const prisma: any = {
       integrationConfig: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            enabled: true,
-            status: 'CONFIGURED',
-            baseUrl: 'https://stashdb.org',
-            apiKey: 'private-key',
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          enabled: true,
+          status: 'CONFIGURED',
+          baseUrl: 'https://stashdb.org',
+          apiKey: 'private-key',
+        }),
       },
     };
     const catalog: any = {
-      getSceneById: jest
-        .fn()
-        .mockResolvedValue({
-          studioId: 'studio-1',
-          duration: 3675,
-          sourceUrls: [{ url }, { url: 'https://example.test/' }],
-        }),
+      getSceneById: jest.fn().mockResolvedValue({
+        studioId: 'studio-1',
+        duration: 3675,
+        sourceUrls: [{ url }, { url: 'https://example.test/' }],
+      }),
     };
     const identity = await new CatalogSourceIdentityService(
       prisma,

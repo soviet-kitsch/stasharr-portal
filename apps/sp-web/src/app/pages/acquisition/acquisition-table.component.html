@@ -4,7 +4,15 @@
       <h1>Acquisition</h1>
       <p class="app-page-lede">Track requests and resolve blockers.</p>
     </div>
-    <button class="app-baseline-button" [disabled]="loading()" (click)="refresh()">Refresh</button>
+    <div class="app-action-row">
+      <app-stash-search-all /><button
+        class="app-baseline-button"
+        [disabled]="loading()"
+        (click)="refresh()"
+      >
+        Refresh
+      </button>
+    </div>
   </header>
   <nav class="stage-filters" aria-label="Acquisition stages">
     @for (stage of stages; track stage.id) {
