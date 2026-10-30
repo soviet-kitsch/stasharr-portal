@@ -1040,6 +1040,19 @@ body {
   font: inherit;
   max-width: calc(100vw - 1rem);
 }
+.app-service-icon {
+  display: inline-block;
+  width: 1.4rem;
+  height: 1.4rem;
+  background: center / contain no-repeat;
+  flex: 0 0 auto;
+}
+.app-service-icon-stash {
+  background-image: url('/brands/stash.svg');
+}
+.app-service-icon-hydra {
+  background-image: url('/brands/nzbhydra.svg');
+}
 @media (pointer: coarse) {
   .app-baseline-button.app-icon-button {
     width: 2.75rem;

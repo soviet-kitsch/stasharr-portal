@@ -35,7 +35,7 @@ import { HydraSettings, HydraTerms, hydraLink, hydraQuery } from './hydra-search
       (click)="show()"
     >
       @if (compact) {
-        <i class="pi pi-external-link" aria-hidden="true"></i>
+        <span class="app-service-icon app-service-icon-hydra" aria-hidden="true"></span>
       } @else {
         Search Hydra
       }

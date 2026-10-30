@@ -946,7 +946,10 @@ export class DiagnosticsService implements OnApplicationBootstrap {
   }
 
   async table(query: DiagnosticTableQuery) {
-    const evidence = await this.indexing.getAcquisitionEvidence();
+    const [evidence, whisparrConfig] = await Promise.all([
+      this.indexing.getAcquisitionEvidence(),
+      this.integrations.findOne('WHISPARR').catch(() => null),
+    ]);
     return this.prisma.$transaction(
       async (tx) => {
         const page = query.page ?? 1,
@@ -1176,6 +1179,14 @@ export class DiagnosticsService implements OnApplicationBootstrap {
               type: 'SCENE',
               imageUrl: row.imageUrl,
               cardImageUrl: withStashImageSize(row.imageUrl, 320),
+              whisparrViewUrl:
+                row.whisparrMovieId != null && whisparrConfig?.baseUrl
+                  ? this.whisparr.buildSceneViewUrl(
+                      integrationBrowserBaseUrl(whisparrConfig) ??
+                        whisparrConfig.baseUrl,
+                      row.whisparrMovieId,
+                    )
+                  : null,
             };
           }),
           hydraConfigured: !!settings.browserUrl,

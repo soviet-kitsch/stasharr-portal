@@ -185,6 +185,7 @@
                   [condition]="row.reconciliation?.condition ?? null"
                   [searchEnabled]="row.status.state !== 'IMPORT_PENDING'"
                   [compact]="true"
+                  [whisparrViewUrl]="row.whisparrViewUrl"
                   (changed)="actionsFinished()"
                 >
                   @if (row.status.state === 'IMPORT_PENDING') {

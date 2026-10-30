@@ -1,0 +1,113 @@
+:host {
+  display: inline-block;
+}
+.diagnostics-body {
+  overflow-wrap: anywhere;
+}
+h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+h4 {
+  margin: 0;
+}
+p {
+  line-height: 1.45;
+  margin: 0.5rem 0;
+}
+.summary {
+  font-size: 1.05rem;
+}
+.muted {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: normal;
+}
+.request-summary {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--p-content-border-color);
+}
+.summary-tools,
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.next-step {
+  font-weight: 600;
+}
+.request-activity {
+  margin: 1rem 0;
+}
+ol {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+li {
+  margin: 0.65rem 0;
+}
+li strong {
+  font-size: 0.9rem;
+}
+li p {
+  font-size: 0.85rem;
+}
+ol:not(.expanded) li p {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.detail-section {
+  border-top: 1px solid var(--p-content-border-color);
+  padding: 0.8rem 0;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.detail-section > summary > span {
+  margin-left: 0.5rem;
+}
+.attempt {
+  padding: 0.65rem 0;
+}
+.attempt summary small {
+  display: block;
+}
+.candidate {
+  margin: 0.5rem 0;
+  padding: 0.65rem;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.3rem;
+}
+.candidate summary {
+  font-weight: normal;
+  font-size: 0.85rem;
+}
+.candidate summary p {
+  color: var(--text-muted);
+}
+.recovery-notice {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.3rem;
+  padding: 0.75rem;
+  margin: 0.75rem 0;
+}
+.app-action-row {
+  margin: 0.75rem 0;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--p-content-border-color);
+  padding-top: 0.75rem;
+}
+
+.request-activity li small {
+  display: block;
+  margin-top: 0.15rem;
+}

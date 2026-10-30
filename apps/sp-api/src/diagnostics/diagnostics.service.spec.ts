@@ -252,6 +252,33 @@ describe('automatic request observations', () => {
     );
     expect(f.native).not.toHaveBeenCalled();
   });
+  it('builds row-level Whisparr links using the browser URL and only known scene mappings', async () => {
+    const f = fixture();
+    f.whis.buildSceneViewUrl.mockImplementation(
+      (base: string, id: number) => base + '/movie/' + id,
+    );
+    f.db.sceneIndex.findMany.mockResolvedValue([
+      {
+        stashId: 'known',
+        whisparrMovieId: 7,
+        imageUrl: null,
+        diagnostics: null,
+      },
+      {
+        stashId: 'missing',
+        whisparrMovieId: null,
+        imageUrl: null,
+        diagnostics: null,
+      },
+    ]);
+    const result = await f.service.table({});
+    expect(result.items.map((row) => row.whisparrViewUrl)).toEqual([
+      'http://user/whisparr/movie/7',
+      null,
+    ]);
+    expect(f.whis.buildSceneViewUrl).toHaveBeenCalledTimes(1);
+    expect(f.native).not.toHaveBeenCalled();
+  });
   it('preserves text filtering when adding an unknown-evidence blocker', async () => {
     const f = fixture();
     await f.service.table({ q: 'Example', blocker: 'UNKNOWN' });

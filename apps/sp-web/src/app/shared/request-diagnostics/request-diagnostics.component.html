@@ -1,0 +1,274 @@
+<button
+  class="app-baseline-button small"
+  [class.app-icon-button]="compact"
+  [attr.aria-label]="compact ? 'Request details' : null"
+  [attr.title]="compact ? 'Request details' : null"
+  type="button"
+  (click)="show()"
+>
+  @if (compact) {
+    <i class="pi pi-info-circle" aria-hidden="true"></i>
+  } @else {
+    Request details
+  }
+</button>
+<p-dialog
+  header="Request details"
+  styleClass="app-review-dialog"
+  [visible]="open()"
+  (visibleChange)="visibility($event)"
+  [modal]="true"
+  [closeOnEscape]="true"
+  [appendTo]="'body'"
+  [style]="{ width: '48rem', maxWidth: '96vw' }"
+>
+  <div class="diagnostics-body">
+    <h3>{{ sceneTitle }}</h3>
+    @if (message()) {
+      <p role="status">{{ message() }}</p>
+    }
+    @if (data(); as value) {
+      <section class="request-summary" aria-label="Current request status">
+        <strong class="summary">{{ value.summary?.label || 'No retained observations' }}</strong>
+        @if (value.summary?.detail) {
+          <p>{{ value.summary?.detail }}</p>
+        }
+        @if (nextStep()) {
+          <p class="next-step">{{ nextStep() }}</p>
+        }
+        <div class="summary-tools">
+          <small class="muted"
+            >Updated
+            {{
+              value.summary?.checkedAt
+                ? (value.summary?.checkedAt | date: 'short')
+                : 'not yet confirmed'
+            }}</small
+          >
+          <button
+            class="app-baseline-button small"
+            [disabled]="busy() || recoveryBusy()"
+            (click)="refresh()"
+          >
+            Refresh status
+          </button>
+        </div>
+      </section>
+    } @else if (busy()) {
+      <p role="status">Loading request details…</p>
+    } @else {
+      <button class="app-baseline-button small" (click)="load()">Retry details</button>
+    }
+
+    @if (history(); as value) {
+      @if (value.activeActionId) {
+        <section class="recovery-notice" aria-label="Unconfirmed request action">
+          <p>An action is running or its outcome needs checking.</p>
+          <button
+            class="app-baseline-button"
+            [disabled]="recoveryBusy() || busy()"
+            (click)="recoverRequest('outcome')"
+          >
+            Check outcome
+          </button>
+        </section>
+      }
+      @if (value.dismissed) {
+        <section class="recovery-notice" aria-label="Removed request">
+          <p>This request was removed from Portal.</p>
+          <button
+            class="app-baseline-button"
+            [disabled]="recoveryBusy() || busy()"
+            (click)="recoverRequest('restore')"
+          >
+            Restore request
+          </button>
+        </section>
+      }
+    }
+    @for (attempt of unresolvedAttempts(); track attempt.id) {
+      <section class="recovery-notice" aria-label="Diagnostic outcome needs review">
+        <p>
+          {{
+            attempt.state === 'UNCERTAIN'
+              ? 'Diagnostic results were not confirmed. Check Whisparr before closing the interrupted search guard.'
+              : 'Diagnostic results were saved, but their request action still needs confirmation.'
+          }}
+        </p>
+        <button
+          class="app-baseline-button"
+          [disabled]="busy() || recoveryBusy()"
+          (click)="closeInterrupted(attempt.id)"
+        >
+          {{
+            attempt.state === 'UNCERTAIN'
+              ? 'Close interrupted diagnostic'
+              : 'Confirm recorded diagnostic outcome'
+          }}
+        </button>
+      </section>
+    }
+
+    <section class="request-activity" aria-label="Request activity">
+      <div class="section-heading">
+        <h4>{{ allActivity() ? 'Request activity' : 'Recent activity' }}</h4>
+        @if (activity().length > 5 || allActivity()) {
+          <button class="app-baseline-button small" (click)="allActivity.set(!allActivity())">
+            {{ allActivity() ? 'Show recent activity' : 'Show all activity' }}
+          </button>
+        }
+      </div>
+      @if (historyError()) {
+        <p role="status">
+          {{ historyError() }}
+          <button
+            class="app-baseline-button small"
+            [disabled]="historyLoading()"
+            (click)="loadHistory()"
+          >
+            Retry history
+          </button>
+        </p>
+      }
+      <ol [class.expanded]="allActivity()">
+        @for (item of allActivity() ? activity() : activity().slice(0, 5); track item.id) {
+          <li>
+            <strong>{{ item.label }}</strong>
+            @if (item.detail) {
+              <p>{{ item.detail }}</p>
+            }
+            <small class="muted"
+              ><time>{{ item.at | date: 'short' }}</time> · {{ item.source }}</small
+            >
+          </li>
+        } @empty {
+          <li class="muted">
+            {{ historyLoading() || busy() ? 'Loading activity…' : 'No recorded activity yet.' }}
+          </li>
+        }
+      </ol>
+      @if (allActivity() && data()?.hasMoreEvents) {
+        <button
+          class="app-baseline-button"
+          [disabled]="busy() || recoveryBusy()"
+          (click)="more('events')"
+        >
+          Older events
+        </button>
+      }
+    </section>
+
+    @if (data(); as value) {
+      <details
+        class="detail-section"
+        [open]="searchExpanded()"
+        (toggle)="searchExpanded.set($any($event.target).open)"
+      >
+        <summary>
+          Search decisions
+          <span class="muted">{{
+            value.attempts.length ? outcome(value.attempts[0]) : 'No retained results'
+          }}</span>
+        </summary>
+        @if (searchExpanded()) {
+          <p class="muted">
+            A diagnostic checks current releases without downloading. It uses indexer quota.
+          </p>
+          <div class="app-action-row">
+            <button
+              class="app-baseline-button"
+              [disabled]="busy() || running() || recoveryBusy()"
+              (click)="runSearch()"
+            >
+              Run diagnostic search
+            </button>
+            <app-hydra-search [inline]="true" [sceneId]="sceneId" [sceneTitle]="sceneTitle" />
+            @if (value.whisparrUrl; as url) {
+              <a class="app-baseline-button" [href]="url" target="_blank" rel="noopener noreferrer"
+                >Open in Whisparr</a
+              >
+            }
+          </div>
+          @for (attempt of value.attempts; track attempt.id; let first = $first) {
+            <details class="attempt" [open]="first">
+              <summary>
+                {{ attempt.mode === 'DIAGNOSTIC' ? 'Diagnostic search' : 'Whisparr search' }} ·
+                {{ outcome(attempt)
+                }}<small class="muted"
+                  >{{ attempt.createdAt | date: 'short' }} · {{ attemptState(attempt.state)
+                  }}{{ attempt.currentIntegration ? '' : ' · Previous integration' }}</small
+                >
+              </summary>
+              @for (candidate of attempt.candidates ?? []; track candidate.rank) {
+                <details class="candidate">
+                  <summary>
+                    <strong>#{{ candidate.rank }} {{ candidate.title }}</strong>
+                    <p>
+                      {{
+                        candidate.rejections[0] ||
+                          (candidate.approved
+                            ? 'Accepted by evaluation; no download submitted.'
+                            : 'No rejection explanation supplied.')
+                      }}
+                    </p>
+                  </summary>
+                  <p>
+                    {{ candidate.indexer }} · {{ candidate.quality || 'Quality unknown' }} ·
+                    {{ bytes(candidate.size) }} · Seeders: {{ candidate.seeders ?? 'Unknown' }}
+                  </p>
+                  @if (candidate.mappedMovieId && candidate.mappedMovieId !== attempt.movieId) {
+                    <p><strong>Mapped to a different Whisparr scene</strong></p>
+                  } @else if (!candidate.mappedMovieId) {
+                    <p>Scene identity not confirmed by Whisparr.</p>
+                  } @else if (candidate.rank === topRank(attempt)) {
+                    <p>Top returned candidate for this scene</p>
+                  }
+                  @for (reason of candidate.rejections; track $index) {
+                    <p>Rejected: {{ reason }}</p>
+                  }
+                </details>
+              } @empty {
+                <p class="muted">
+                  No retained candidate decisions. This does not prove no search occurred.
+                </p>
+              }
+            </details>
+          } @empty {
+            <p class="muted">No retained search history. This does not mean no search occurred.</p>
+          }
+          @if (value.hasMoreAttempts) {
+            <button
+              class="app-baseline-button"
+              [disabled]="busy() || recoveryBusy()"
+              (click)="more('attempts')"
+            >
+              Older search attempts
+            </button>
+          }
+        }
+      </details>
+      <details class="detail-section">
+        <summary>Technical evidence</summary>
+        <p>
+          Native history checked:
+          {{ value.sync?.checkedAt ? (value.sync?.checkedAt | date: 'medium') : 'Not confirmed' }}.
+        </p>
+        @if (value.sync?.error) {
+          <p role="status">{{ value.sync?.error }}</p>
+        }
+        <p>
+          Portal action details cover the latest 20 actions. Older recorded events can be loaded
+          through Request activity.
+        </p>
+        @for (limit of value.limitations; track limit) {
+          <p>{{ limit }}</p>
+        }
+      </details>
+    }
+    <div class="dialog-footer">
+      <button class="app-baseline-button" type="button" (click)="visibility(false)">
+        Close details
+      </button>
+    </div>
+  </div>
+</p-dialog>

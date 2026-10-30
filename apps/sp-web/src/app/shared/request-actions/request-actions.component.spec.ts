@@ -43,6 +43,16 @@ describe('request action controls', () => {
         .join(' ')
     );
   }
+  const diagnostics = {
+    summary: null,
+    events: [],
+    attempts: [],
+    limitations: [],
+    hasMoreEvents: false,
+    hasMoreAttempts: false,
+    sync: null,
+    whisparrUrl: null,
+  };
   function single() {
     const fixture = TestBed.createComponent(RequestActionsComponent);
     fixture.componentRef.setInput('sceneId', 'scene-1');
@@ -105,6 +115,7 @@ describe('request action controls', () => {
         { message: 'Check the outcome.', actionState: 'UNCERTAIN' },
         { status: 409, statusText: 'Conflict' },
       );
+    http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
     http
       .expectOne('/api/requests/scene-1/history')
       .flush({ dismissed: false, activeActionId: 'pending', actions: [] });
@@ -112,6 +123,7 @@ describe('request action controls', () => {
     await fixture.whenStable();
     button(fixture, 'Check outcome').click();
     http.expectOne('/api/requests/scene-1/outcome').flush({ outcome: 'NO_PENDING_ACTION' });
+    http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
     http
       .expectOne('/api/requests/scene-1/history')
       .flush({ dismissed: false, activeActionId: null, actions: [] });
@@ -337,7 +349,8 @@ describe('request action controls', () => {
 
   it('shows the concrete resume outcome in retained request history', async () => {
     const fixture = single();
-    button(fixture, 'Request history').click();
+    button(fixture, 'Request details').click();
+    http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
     http.expectOne('/api/requests/scene-1/history').flush({
       dismissed: false,
       activeActionId: null,

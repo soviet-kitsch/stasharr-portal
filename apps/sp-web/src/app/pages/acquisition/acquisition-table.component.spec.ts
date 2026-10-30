@@ -121,6 +121,29 @@ describe('acquisition table', () => {
     http.expectNone((r) => r.method === 'POST');
     fixture.destroy();
   });
+  it('shows a direct Whisparr link beside the branded Stash and Hydra controls', () => {
+    const { fixture, component } = setup();
+    component.data.set(
+      response([
+        {
+          ...row('imported'),
+          status: { state: 'IMPORT_PENDING' },
+          whisparrViewUrl: 'http://user.example/whisparr/movie/7',
+        },
+      ]),
+    );
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector('[aria-label="Open in Whisparr"]');
+    expect(link.getAttribute('href')).toBe('http://user.example/whisparr/movie/7');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(fixture.nativeElement.querySelector('.app-service-icon-stash')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.app-service-icon-hydra')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Re-request"] .pi-send'),
+    ).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Re-request"] .pi-replay')).toBeNull();
+    fixture.destroy();
+  });
   it('selects all filtered rows across API-sized pages and preserves exact identities', async () => {
     const { fixture, component } = setup();
     const pending = component.selectAll();

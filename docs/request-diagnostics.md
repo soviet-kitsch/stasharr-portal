@@ -48,3 +48,12 @@ The acquisition table returns cached catalog artwork and a 320-pixel thumbnail U
 Primary row controls use labelled icon buttons with native title hints and the existing baseline button appearance: Request details, Re-request, Search again when eligible and Search Hydra when configured. Awaiting Import replaces Search again with Review Stash match. A keyboard-accessible three-dot popup contains Request history and Delete request; deletion still requires its existing confirmation and never removes media. Other pages retain their text buttons. Touch controls have 44-pixel targets. Stage and activity columns yield space at tablet widths; status and all primary actions remain visible.
 
 Validation: 441 backend tests, 178 frontend tests and both production builds pass. Neutral browser fixtures exercise thumbnails, privacy blur, all launch dialogs, the overflow menu and deletion cancellation at six desktop/tablet/mobile widths in both themes, with external requests blocked and no acquisition or deletion submitted.
+
+
+## Combined request details and history
+
+Request details now loads Portal action outcomes and diagnostic observations independently in one dialog. The default view contains the current status, a contextual next step and five recent activity entries. Matching final Portal action events are deduplicated against structured action history; earlier state transitions remain available. Show all activity and the overflow's Request history shortcut expand the same activity view. Older native events retain cursor pagination; structured action details retain the existing latest-20 limit. Search decisions and technical evidence start collapsed, including full release rejection explanations and source-coverage limitations.
+
+Active/uncertain request actions, dismissed-request restoration and interrupted diagnostic recovery remain visible without expanding technical sections. Failed history/diagnostic reads are isolated and retryable. Viewing details or history starts no search or acquisition. The dialog refreshes automatically only while open; obsolete responses cannot overwrite a newer view.
+
+The acquisition row exposes the known scene's Whisparr browser link without per-row provider calls. Stash and NZBHydra buttons use official, locally bundled SVG brand assets with upstream notices in public/brands. Brand icons remain visible under the media-blur preference. Re-request uses a send icon. Delete remains confirmed in the overflow, and narrow phones wrap the controls into a three-column grid.

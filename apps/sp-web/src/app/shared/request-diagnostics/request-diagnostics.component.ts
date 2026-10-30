@@ -1,8 +1,9 @@
-import { Component, Input, OnDestroy, inject, signal } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnDestroy, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Dialog } from 'primeng/dialog';
 import { newOperationKey } from '../../core/api/operation-key';
+import { requestOutcomeMessage } from '../request-actions/request-outcome';
 import { HydraSearchComponent } from './hydra-search.component';
 
 interface Attempt {
@@ -34,9 +35,10 @@ interface DiagnosticEvent {
   source: string;
   occurredAt: string;
   observedAt: string;
+  kind?: string;
 }
 interface Details {
-  summary: { label: string; detail: string; checkedAt: string } | null;
+  summary: { code?: string; label: string; detail: string; checkedAt: string } | null;
   events: DiagnosticEvent[];
   attempts: Attempt[];
   nextEventCursor?: string;
@@ -48,242 +50,53 @@ interface Details {
   sync: { checkedAt: string | null; error: string | null } | null;
 }
 
+interface ActionHistory {
+  dismissed: boolean;
+  activeActionId: string | null;
+  actions: Array<{
+    id: string;
+    kind: string;
+    state: string;
+    createdAt: string;
+    updatedAt?: string;
+    result: { outcome?: string; message?: string } | null;
+  }>;
+}
+interface Activity {
+  id: string;
+  label: string;
+  detail: string;
+  at: string;
+  source: string;
+}
+
 @Component({
   selector: 'app-request-diagnostics',
   imports: [Dialog, DatePipe, HydraSearchComponent],
-  styles: [
-    `
-      :host {
-        display: inline-block;
-      }
-      .summary {
-        font-size: 1.1rem;
-      }
-      li {
-        margin: 0.75rem 0;
-      }
-      .muted {
-        opacity: 0.75;
-      }
-      .attempt {
-        border-bottom: 1px solid var(--p-content-border-color);
-        padding: 0.75rem 0;
-      }
-      .candidates {
-        display: block;
-      }
-      .candidate {
-        border-bottom: 1px solid var(--p-content-border-color);
-        padding: 0.75rem 0;
-      }
-      .app-action-row {
-        margin: 0.75rem 0;
-      }
-      time {
-        font-size: 0.85rem;
-      }
-    `,
-  ],
-  template: ` <button
-      class="app-baseline-button small"
-      [class.app-icon-button]="compact"
-      [attr.aria-label]="compact ? 'Request details' : null"
-      [attr.title]="compact ? 'Request details' : null"
-      type="button"
-      (click)="show()"
-    >
-      @if (compact) {
-        <i class="pi pi-list" aria-hidden="true"></i>
-      } @else {
-        Request details
-      }
-    </button>
-    <p-dialog
-      header="Request details"
-      styleClass="app-review-dialog"
-      [visible]="open()"
-      (visibleChange)="visibility($event)"
-      [modal]="true"
-      [closeOnEscape]="true"
-      [appendTo]="'body'"
-      [style]="{ width: '60rem', maxWidth: '96vw' }"
-    >
-      <div class="diagnostics-body">
-        <h3>{{ sceneTitle }}</h3>
-        <div class="app-action-row">
-          <button class="app-baseline-button" type="button" (click)="visibility(false)">
-            Close details
-          </button>
-          <button class="app-baseline-button" [disabled]="busy()" (click)="refresh()">
-            Refresh observations
-          </button>
-          <button
-            class="app-baseline-button"
-            [disabled]="busy() || running()"
-            (click)="runSearch()"
-          >
-            Run diagnostic search
-          </button>
-          <app-hydra-search [inline]="true" [sceneId]="sceneId" [sceneTitle]="sceneTitle" />
-          @if (data()?.whisparrUrl; as url) {
-            <a class="app-baseline-button" [href]="url" target="_blank" rel="noopener noreferrer"
-              >Open Whisparr</a
-            >
-          }
-        </div>
-        <p class="muted">
-          Diagnostic search checks fresh release decisions without grabbing. It uses indexer quota.
-          Search again and Re-request can acquire releases.
-        </p>
-        @if (message()) {
-          <p role="status">{{ message() }}</p>
-        }
-        @if (data(); as value) {
-          <p class="summary">
-            <strong>{{ value.summary?.label || 'No retained observations' }}</strong>
-          </p>
-          <p>{{ value.summary?.detail }}</p>
-          <p class="muted">
-            Last observation: {{ value.summary?.checkedAt | date: 'medium' }}. Native history
-            checked: {{ value.sync?.checkedAt | date: 'medium' }}.
-          </p>
-          @if (value.sync?.error) {
-            <p role="status">{{ value.sync?.error }}</p>
-          }
-          <h4>Search attempts</h4>
-          @for (attempt of value.attempts; track attempt.id) {
-            <div class="attempt">
-              <strong>{{
-                attempt.mode === 'DIAGNOSTIC' ? 'Diagnostic search' : 'Whisparr search'
-              }}</strong>
-              · {{ attempt.state }} · {{ outcome(attempt) }}
-              <p>
-                <time>{{ attempt.createdAt | date: 'medium' }}</time>
-                @if (!attempt.currentIntegration) {
-                  · Previous integration
-                }
-              </p>
-              @if (attempt.candidates) {
-                <button class="app-baseline-button" (click)="selected.set(attempt)">
-                  Inspect candidates
-                </button>
-              }
-              @if (attempt.mode === 'DIAGNOSTIC' && attempt.state === 'UNCERTAIN') {
-                <p>
-                  Results were not confirmed. After checking Whisparr, close this interrupted
-                  diagnostic to release its search guard. No search will be retried.
-                </p>
-                <button
-                  class="app-baseline-button"
-                  [disabled]="busy()"
-                  (click)="closeInterrupted(attempt.id)"
-                >
-                  Close interrupted diagnostic
-                </button>
-              }
-              @if (attempt.needsReview && attempt.state === 'COMPLETED') {
-                <button
-                  class="app-baseline-button"
-                  [disabled]="busy()"
-                  (click)="closeInterrupted(attempt.id)"
-                >
-                  Confirm recorded diagnostic outcome
-                </button>
-              }
-            </div>
-          } @empty {
-            <p>No retained search history. This does not mean no search occurred.</p>
-          }
-          @if (value.hasMoreAttempts) {
-            <button class="app-baseline-button" [disabled]="busy()" (click)="more('attempts')">
-              Older search attempts
-            </button>
-          }
-          @if (selected(); as attempt) {
-            <h4>Candidate decisions · {{ attempt.createdAt | date: 'medium' }}</h4>
-            <p>
-              Whisparr's returned order. Source coverage and raw indexer hit counts are unknown.
-              {{ attempt.candidateCount }} evaluated, {{ attempt.rejectedCount }} rejected; up to
-              200 detailed candidates retained.
-            </p>
-            <div class="candidates">
-              @for (candidate of attempt.candidates; track candidate.rank) {
-                <article class="candidate">
-                  <strong>#{{ candidate.rank }} {{ candidate.title }}</strong>
-                  <p>
-                    {{ candidate.indexer }} · {{ candidate.quality || 'Quality unknown' }} ·
-                    {{ bytes(candidate.size) }} · Seeders: {{ candidate.seeders ?? 'Unknown' }}
-                  </p>
-                  @if (candidate.mappedMovieId && candidate.mappedMovieId !== attempt.movieId) {
-                    <p><strong>Mapped to a different Whisparr scene</strong></p>
-                  } @else if (!candidate.mappedMovieId) {
-                    <p>Scene identity not confirmed by Whisparr.</p>
-                  } @else if (candidate.rank === topRank(attempt)) {
-                    <p><strong>Top returned candidate for this scene</strong></p>
-                  }
-                  @for (reason of candidate.rejections; track $index) {
-                    <p>Rejected: {{ reason }}</p>
-                  }
-                  @if (!candidate.rejections.length) {
-                    <p>
-                      {{
-                        candidate.approved
-                          ? 'Accepted by evaluation; no download submitted by this diagnostic.'
-                          : 'No rejection explanation supplied.'
-                      }}
-                    </p>
-                  }
-                </article>
-              }
-            </div>
-          }
-          <h4>Timeline</h4>
-          <ol>
-            @for (event of value.events; track event.id) {
-              <li>
-                {{ event.label }}<br /><time>{{ event.occurredAt | date: 'medium' }}</time>
-                <span class="muted">
-                  ·
-                  {{
-                    event.source === 'PORTAL'
-                      ? 'Portal action'
-                      : event.label.startsWith('Observed:')
-                        ? 'Observed state'
-                        : 'Whisparr event'
-                  }}</span
-                >
-              </li>
-            } @empty {
-              <li>No retained events yet.</li>
-            }
-          </ol>
-          @if (value.hasMoreEvents) {
-            <button class="app-baseline-button" [disabled]="busy()" (click)="more('events')">
-              Older events
-            </button>
-          }
-          <details>
-            <summary>Evidence limitations</summary>
-            @for (limit of value.limitations; track limit) {
-              <p>{{ limit }}</p>
-            }
-          </details>
-        }
-      </div>
-    </p-dialog>`,
+  templateUrl: './request-diagnostics.component.html',
+  styleUrl: './request-diagnostics.component.scss',
 })
 export class RequestDiagnosticsComponent implements OnDestroy {
   @Input({ required: true }) sceneId = '';
   @Input() sceneTitle = '';
   @Input() compact = false;
+  @Output() changed = new EventEmitter<void>();
   private readonly http = inject(HttpClient);
   protected readonly open = signal(false);
   protected readonly busy = signal(false);
   protected readonly message = signal('');
   protected readonly data = signal<Details | null>(null);
-  protected readonly selected = signal<Attempt | null>(null);
+  protected readonly history = signal<ActionHistory | null>(null);
+  protected readonly historyLoading = signal(false);
+  protected readonly historyError = signal('');
+  protected readonly recoveryBusy = signal(false);
+  protected readonly allActivity = signal(false);
+  protected readonly searchExpanded = signal(false);
+  private readonly recoveryKeys = new Map<string, string>();
   private timer?: ReturnType<typeof setInterval>;
   private generation = 0;
+  private loadGeneration = 0;
+  private historyGeneration = 0;
   protected running() {
     return (
       this.data()?.attempts.some(
@@ -291,15 +104,19 @@ export class RequestDiagnosticsComponent implements OnDestroy {
       ) ?? false
     );
   }
-  protected show() {
+  show() {
     this.open.set(true);
     this.data.set(null);
-    this.selected.set(null);
+    this.history.set(null);
+    this.message.set('');
+    this.historyError.set('');
+    this.allActivity.set(false);
+    this.searchExpanded.set(false);
     this.generation++;
     this.load();
     if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => {
-      if (this.open() && !this.busy()) this.load();
+      if (this.open() && !this.busy() && !this.recoveryBusy()) this.load();
     }, 15_000);
   }
   protected visibility(visible: boolean) {
@@ -309,15 +126,21 @@ export class RequestDiagnosticsComponent implements OnDestroy {
       clearInterval(this.timer);
     }
   }
+  showActivity() {
+    this.show();
+    this.allActivity.set(true);
+  }
   private path() {
     return '/api/requests/' + encodeURIComponent(this.sceneId);
   }
-  private load() {
+  protected load() {
     const generation = this.generation;
+    const request = ++this.loadGeneration;
     this.busy.set(true);
+    this.loadHistory();
     this.http.get<Details>(this.path() + '/diagnostics').subscribe({
       next: (value) => {
-        if (generation !== this.generation) return;
+        if (generation !== this.generation || request !== this.loadGeneration) return;
         const old = this.data();
         const merge = <T extends { id: string }>(oldRows: T[], newRows: T[]) => [
           ...new Map([...oldRows, ...newRows].map((row) => [row.id, row])).values(),
@@ -345,13 +168,153 @@ export class RequestDiagnosticsComponent implements OnDestroy {
         if (this.message().startsWith('Diagnostics could not')) this.message.set('');
       },
       error: () => {
-        if (generation !== this.generation) return;
+        if (generation !== this.generation || request !== this.loadGeneration) return;
         this.busy.set(false);
         this.message.set(
           'Diagnostics could not be loaded. Check the Whisparr connection and retry.',
         );
       },
     });
+  }
+  protected loadHistory() {
+    const generation = this.generation;
+    const request = ++this.historyGeneration;
+    this.historyLoading.set(true);
+    this.http.get<ActionHistory>(this.path() + '/history').subscribe({
+      next: (value) => {
+        if (generation !== this.generation || request !== this.historyGeneration) return;
+        this.history.set(value);
+        this.historyError.set('');
+        this.historyLoading.set(false);
+      },
+      error: () => {
+        if (generation !== this.generation || request !== this.historyGeneration) return;
+        this.historyLoading.set(false);
+        this.historyError.set('Portal action history could not be refreshed.');
+      },
+    });
+  }
+  protected recoverRequest(action: 'outcome' | 'restore') {
+    if (this.recoveryBusy()) return;
+    this.recoveryBusy.set(true);
+    this.message.set('');
+    const key = this.recoveryKeys.get(action) ?? newOperationKey();
+    this.recoveryKeys.set(action, key);
+    // A submitted recovery remains scene-scoped if the dialog is closed during the request.
+    const path = this.path();
+    const generation = this.generation;
+    this.http.post<{ outcome: string }>(path + '/' + action, { operationKey: key }).subscribe({
+      next: (result) => {
+        this.recoveryKeys.delete(action);
+        this.recoveryBusy.set(false);
+        this.changed.emit();
+        if (generation !== this.generation) return;
+        this.message.set(
+          requestOutcomeMessage(result.outcome) ||
+            (result.outcome === 'NO_PENDING_ACTION'
+              ? 'No action is awaiting an outcome.'
+              : 'Outcome checked.'),
+        );
+        this.load();
+      },
+      error: (error) => {
+        if (error.error?.actionState === 'FAILED' || (error.status && error.status !== 409))
+          this.recoveryKeys.delete(action);
+        this.recoveryBusy.set(false);
+        if (generation !== this.generation) return;
+        this.message.set(
+          typeof error.error?.message === 'string'
+            ? error.error.message
+            : 'The outcome is still unknown. Check the recorded history before retrying.',
+        );
+        this.load();
+      },
+    });
+  }
+  protected activity(): Activity[] {
+    const actions = this.history()?.actions ?? [];
+    const items: Activity[] = actions.map((a) => ({
+      id: 'action:' + a.id,
+      label: this.actionLabel(a.kind) + ' · ' + this.stateLabel(a.state),
+      detail: a.result?.message || requestOutcomeMessage(a.result?.outcome),
+      at: a.updatedAt || a.createdAt,
+      source: 'Portal',
+    }));
+    for (const event of this.data()?.events ?? []) {
+      const duplicate =
+        event.source === 'PORTAL' &&
+        actions.some(
+          (a) =>
+            event.label === a.kind.replaceAll('_', ' ') + ': ' + a.state.toLowerCase() &&
+            Date.parse(event.occurredAt) === Date.parse(a.updatedAt || a.createdAt),
+        );
+      if (!duplicate)
+        items.push({
+          id: 'event:' + event.id,
+          label: event.label,
+          detail: '',
+          at: event.occurredAt,
+          source:
+            event.source === 'PORTAL'
+              ? 'Portal'
+              : event.label.startsWith('Observed:')
+                ? 'Observation'
+                : 'Whisparr',
+        });
+    }
+    return items.sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+  }
+  protected actionLabel(kind: string) {
+    return (
+      (
+        {
+          REQUEST: 'Request',
+          RE_REQUEST: 'Re-request',
+          SEARCH: 'Search again',
+          DISMISS: 'Delete from Portal',
+          RESTORE: 'Restore request',
+          DIAGNOSTIC_SEARCH: 'Diagnostic search',
+        } as Record<string, string>
+      )[kind] ?? 'Request action'
+    );
+  }
+  protected stateLabel(state: string) {
+    return (
+      (
+        {
+          RUNNING: 'In progress',
+          SUCCEEDED: 'Confirmed',
+          FAILED: 'Not completed',
+          UNCERTAIN: 'Outcome needs checking',
+        } as Record<string, string>
+      )[state] ?? 'Check outcome'
+    );
+  }
+  protected nextStep() {
+    const code = this.data()?.summary?.code;
+    return (
+      (
+        {
+          WAITING_FOR_STASH_MATCH: 'Review the Stash match from the acquisition row.',
+          IMPORT_PENDING: 'Open Whisparr to review the download’s import status.',
+          ORPHANED_REQUEST:
+            'Re-request from the acquisition row to restore the missing Whisparr entry.',
+          ALL_REJECTED: 'Expand Search decisions to see why releases were rejected.',
+          NO_CANDIDATES: 'Try a broader search in NZBHydra or wait for another release.',
+          STATUS_UNAVAILABLE: 'Refresh status to check the connected services.',
+          UNKNOWN: 'No search results were retained. Search decisions can run a fresh check.',
+        } as Record<string, string>
+      )[code ?? ''] ?? ''
+    );
+  }
+  protected unresolvedAttempts() {
+    return (
+      this.data()?.attempts.filter(
+        (a) =>
+          a.mode === 'DIAGNOSTIC' &&
+          (a.state === 'UNCERTAIN' || (a.needsReview && a.state === 'COMPLETED')),
+      ) ?? []
+    );
   }
   protected refresh() {
     this.action('/diagnostics/refresh', {}, 'Observations refreshed.');
@@ -397,13 +360,14 @@ export class RequestDiagnosticsComponent implements OnDestroy {
     if (!old || !cursor || this.busy()) return;
     this.busy.set(true);
     const generation = this.generation;
+    const request = ++this.loadGeneration;
     this.http
       .get<Details>(this.path() + '/diagnostics', {
         params: new HttpParams().set(kind === 'events' ? 'eventBefore' : 'attemptBefore', cursor),
       })
       .subscribe({
         next: (value) => {
-          if (generation !== this.generation) return;
+          if (generation !== this.generation || request !== this.loadGeneration) return;
           this.data.set(
             kind === 'events'
               ? {
@@ -422,6 +386,7 @@ export class RequestDiagnosticsComponent implements OnDestroy {
           this.busy.set(false);
         },
         error: () => {
+          if (generation !== this.generation || request !== this.loadGeneration) return;
           this.busy.set(false);
           this.message.set('Older history could not be loaded. Your current history is retained.');
         },
@@ -431,6 +396,20 @@ export class RequestDiagnosticsComponent implements OnDestroy {
     return a.candidateCount === null
       ? 'Result count unknown'
       : `${a.candidateCount} evaluated · ${a.rejectedCount ?? 'Unknown'} rejected`;
+  }
+  protected attemptState(state: string) {
+    return (
+      (
+        {
+          QUEUED: 'Queued',
+          RUNNING: 'Running',
+          COMPLETED: 'Completed',
+          UNCERTAIN: 'Outcome unconfirmed',
+          FAILED: 'Failed',
+          CLOSED: 'Closed',
+        } as Record<string, string>
+      )[state] ?? 'Unknown'
+    );
   }
   protected bytes(value: number | null) {
     return value === null ? 'Size unknown' : (value / 1024 ** 3).toFixed(2) + ' GiB';

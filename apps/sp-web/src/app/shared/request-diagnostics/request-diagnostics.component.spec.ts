@@ -20,6 +20,7 @@ describe('request diagnostics controls', () => {
     http.verify();
     TestBed.resetTestingModule();
   });
+  const history = { dismissed: false, activeActionId: null, actions: [] };
   const details = {
     summary: null,
     request: null,
@@ -38,6 +39,7 @@ describe('request diagnostics controls', () => {
     http.expectNone(() => true);
     (fixture.componentInstance as any).show();
     http.expectOne('/api/requests/example/diagnostics').flush(details);
+    http.expectOne('/api/requests/example/history').flush(history);
     http.expectNone((r) => r.method !== 'GET');
     fixture.destroy();
   });
@@ -47,11 +49,13 @@ describe('request diagnostics controls', () => {
     const component = fixture.componentInstance as any;
     component.show();
     http.expectOne('/api/requests/example/diagnostics').flush(details);
+    http.expectOne('/api/requests/example/history').flush(history);
     component.runSearch();
     const request = http.expectOne('/api/requests/example/diagnostic-searches');
     expect(request.request.body.operationKey).toMatch(/^[a-f0-9-]{36}$/);
     request.flush({ id: 'attempt' });
     http.expectOne('/api/requests/example/diagnostics').flush(details);
+    http.expectOne('/api/requests/example/history').flush(history);
     fixture.destroy();
   });
   it('retains history while loading an independent event cursor', () => {
@@ -59,6 +63,7 @@ describe('request diagnostics controls', () => {
     fixture.componentRef.setInput('sceneId', 'example');
     const component = fixture.componentInstance as any;
     component.show();
+    http.expectOne('/api/requests/example/history').flush(history);
     http.expectOne('/api/requests/example/diagnostics').flush({
       ...details,
       events: [{ id: 'new' }],
@@ -71,6 +76,131 @@ describe('request diagnostics controls', () => {
     );
     request.flush({ ...details, events: [{ id: 'old' }] });
     expect(component.data().events.map((r: any) => r.id)).toEqual(['new', 'old']);
+    fixture.destroy();
+  });
+  it('combines structured action outcomes with events without duplicating the same final action', () => {
+    const fixture = TestBed.createComponent(RequestDiagnosticsComponent);
+    fixture.componentRef.setInput('sceneId', 'example');
+    const component = fixture.componentInstance as any;
+    const at = '2026-10-30T10:00:00.000Z';
+    component.show();
+    http
+      .expectOne('/api/requests/example/history')
+      .flush({
+        ...history,
+        actions: [
+          {
+            id: 'a',
+            kind: 'RE_REQUEST',
+            state: 'SUCCEEDED',
+            createdAt: at,
+            updatedAt: at,
+            result: { message: 'Existing download reused.' },
+          },
+        ],
+      });
+    http
+      .expectOne('/api/requests/example/diagnostics')
+      .flush({
+        ...details,
+        events: [
+          {
+            id: 'e',
+            source: 'PORTAL',
+            label: 'RE REQUEST: succeeded',
+            occurredAt: at,
+            observedAt: at,
+          },
+        ],
+      });
+    fixture.detectChanges();
+    expect(component.activity()).toHaveLength(1);
+    expect(component.activity()[0].detail).toBe('Existing download reused.');
+    expect(document.querySelectorAll('.p-dialog')).toHaveLength(1);
+    expect(document.querySelector('.request-activity')?.textContent).toContain(
+      'Existing download reused.',
+    );
+    expect(document.querySelector('.diagnostics-body .candidate')).toBeNull();
+    fixture.destroy();
+  });
+  it('shows only five recent items by default and keeps technical/search details collapsed', () => {
+    const fixture = TestBed.createComponent(RequestDiagnosticsComponent);
+    fixture.componentRef.setInput('sceneId', 'example');
+    const component = fixture.componentInstance as any;
+    component.show();
+    http.expectOne('/api/requests/example/history').flush(history);
+    http
+      .expectOne('/api/requests/example/diagnostics')
+      .flush({
+        ...details,
+        events: Array.from({ length: 9 }, (_, i) => ({
+          id: String(i),
+          source: 'native',
+          label: 'Event ' + i,
+          occurredAt: '2026-10-30T10:00:00.000Z',
+        })),
+      });
+    fixture.detectChanges();
+    expect(document.querySelectorAll('.request-activity li')).toHaveLength(5);
+    expect(
+      Array.from(document.querySelectorAll<HTMLDetailsElement>('.detail-section')).every(
+        (e) => !e.open,
+      ),
+    ).toBe(true);
+    component.allActivity.set(true);
+    fixture.detectChanges();
+    expect(document.querySelectorAll('.request-activity li')).toHaveLength(9);
+    fixture.destroy();
+  });
+  it('retains actionable request recovery when diagnostics are unavailable and does not replay searches', () => {
+    const fixture = TestBed.createComponent(RequestDiagnosticsComponent);
+    fixture.componentRef.setInput('sceneId', 'example');
+    const component = fixture.componentInstance as any;
+    component.show();
+    http
+      .expectOne('/api/requests/example/history')
+      .flush({ ...history, dismissed: true, activeActionId: 'pending' });
+    http
+      .expectOne('/api/requests/example/diagnostics')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    fixture.detectChanges();
+    expect(document.querySelector('[aria-label="Unconfirmed request action"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Removed request"]')).not.toBeNull();
+    http.expectNone((r) => r.method === 'POST');
+    component.recoverRequest('outcome');
+    component.recoverRequest('outcome');
+    const request = http.expectOne('/api/requests/example/outcome');
+    expect(request.request.body.operationKey).toBeTruthy();
+    request.flush({ outcome: 'NO_PENDING_ACTION' });
+    http.expectOne('/api/requests/example/history').flush(history);
+    http.expectOne('/api/requests/example/diagnostics').flush(details);
+    expect(component.message()).toContain('No action is awaiting an outcome');
+    fixture.destroy();
+  });
+  it('keeps diagnostic results visible if the independent action-history request fails', () => {
+    const fixture = TestBed.createComponent(RequestDiagnosticsComponent);
+    fixture.componentRef.setInput('sceneId', 'example');
+    const component = fixture.componentInstance as any;
+    component.show();
+    http
+      .expectOne('/api/requests/example/history')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    http
+      .expectOne('/api/requests/example/diagnostics')
+      .flush({
+        ...details,
+        summary: {
+          code: 'ALL_REJECTED',
+          label: 'All candidates rejected',
+          detail: 'Size limit.',
+          checkedAt: '2026-10-30',
+        },
+      });
+    fixture.detectChanges();
+    expect(document.querySelector('.request-summary')?.textContent).toContain(
+      'All candidates rejected',
+    );
+    expect(component.historyError()).toBeTruthy();
     fixture.destroy();
   });
   it('keeps an edited Hydra query while changing checkboxes until regenerated', () => {
