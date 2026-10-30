@@ -296,7 +296,7 @@ export class RequestDiagnosticsComponent implements OnDestroy {
       (
         {
           WAITING_FOR_STASH_MATCH: 'Review the Stash match from the acquisition row.',
-          IMPORT_PENDING: 'Open Whisparr to review the download’s import status.',
+          WHISPARR_IMPORT_PENDING: 'Open Whisparr to review the download’s import status.',
           ORPHANED_REQUEST:
             'Re-request from the acquisition row to restore the missing Whisparr entry.',
           ALL_REJECTED: 'Expand Search decisions to see why releases were rejected.',
