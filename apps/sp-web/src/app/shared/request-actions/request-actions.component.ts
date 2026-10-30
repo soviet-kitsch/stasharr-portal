@@ -1,3 +1,4 @@
+import { StashAvailabilityComponent } from './stash-availability.component';
 import { newOperationKey } from '../../core/api/operation-key';
 import { RequestDiagnosticsComponent } from '../request-diagnostics/request-diagnostics.component';
 import { Component, EventEmitter, Input, Output, ViewChild, inject, signal } from '@angular/core';
@@ -13,6 +14,7 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
   selector: 'app-request-actions',
   imports: [
     RequestDeletionComponent,
+    StashAvailabilityComponent,
     ResponsiveActionsComponent,
     HydraSearchComponent,
     ImportMatchReviewComponent,
@@ -34,6 +36,7 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
         (reconciled)="changed.emit()"
       />
     }
+    <app-stash-availability [sceneId]="sceneId" [sceneTitle]="sceneTitle" />
     <app-request-diagnostics
       [sceneId]="sceneId"
       [sceneTitle]="sceneTitle"
@@ -72,6 +75,7 @@ export class RequestActionsComponent {
   @ViewChild(RequestDiagnosticsComponent) protected details!: RequestDiagnosticsComponent;
   @Input() hydraAvailable = false;
   @Input() importReviewAvailable = false;
+  @ViewChild(StashAvailabilityComponent) private availability?: StashAvailabilityComponent;
   @ViewChild(HydraSearchComponent) private hydra?: HydraSearchComponent;
   @ViewChild(ImportMatchReviewComponent) private matchReview?: ImportMatchReviewComponent;
   protected get rowActions(): RowAction[] {
@@ -117,6 +121,12 @@ export class RequestActionsComponent {
         icon: 'pi pi-external-link',
         href: this.whisparrViewUrl,
       });
+    actions.push({
+      key: 'stash-availability',
+      label: 'Check Stash availability',
+      icon: 'pi pi-check-circle',
+      run: () => this.availability?.show(),
+    });
     actions.push({
       key: 'history',
       label: 'Item History',

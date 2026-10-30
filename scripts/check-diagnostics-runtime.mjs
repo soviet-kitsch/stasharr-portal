@@ -46,6 +46,11 @@ try {
   await api("/api/acquisition/table", {}, 401);
   const unauthorizedScene = randomUUID();
   await api(
+    `/api/acquisition/scenes/${unauthorizedScene}/stash-availability`,
+    {},
+    401,
+  );
+  await api(
     `/api/requests/${unauthorizedScene}/whisparr-deletion-preview`,
     {},
     401,
@@ -177,6 +182,47 @@ try {
     ).rows[0].count,
     0,
   );
+  const availability = await (
+    await api(`/api/acquisition/scenes/${scene}/stash-availability`)
+  ).json();
+  assert.equal(availability.state, "NOT_CONFIGURED");
+  const emptyStash = createServer((req, res) => {
+    assert.equal(req.method, "POST");
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ data: { findScenes: { count: 0, scenes: [] } } }));
+  });
+  await new Promise((resolve) => emptyStash.listen(0, "127.0.0.1", resolve));
+  try {
+    const stashUrl = `http://127.0.0.1:${emptyStash.address().port}`;
+    for (const type of ["STASH", "STASHDB"])
+      await database.query(
+        `UPDATE "IntegrationConfig" SET "baseUrl"=$2,enabled=$3,status='CONFIGURED',"lastHealthyAt"=NOW(),"updatedAt"=NOW() WHERE type=$1`,
+        [type, stashUrl, type === "STASH"],
+      );
+    const beforeActions = (
+      await database.query(
+        'SELECT COUNT(*)::integer AS count FROM "RequestAction"',
+      )
+    ).rows[0].count;
+    const response = await api(
+      `/api/acquisition/scenes/${scene}/stash-availability`,
+    );
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    const checked = await response.json();
+    assert.equal(checked.state, "NOT_FOUND");
+    assert.deepEqual(checked.matches, []);
+    assert.equal(
+      (
+        await database.query(
+          'SELECT COUNT(*)::integer AS count FROM "RequestAction"',
+        )
+      ).rows[0].count,
+      beforeActions,
+    );
+  } finally {
+    await database.query('UPDATE "IntegrationConfig" SET enabled=false');
+    await new Promise((resolve) => emptyStash.close(resolve));
+  }
   // Real HTTP/controller/DTO/Prisma proof against an in-process fake Whisparr only.
   const deletionScene = randomUUID();
   const synthetic = {

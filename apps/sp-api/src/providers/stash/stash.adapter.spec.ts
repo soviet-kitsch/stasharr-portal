@@ -53,6 +53,75 @@ describe('StashAdapter', () => {
     },
   );
 
+  it.each([
+    {},
+    { count: 0 },
+    { count: 1, scenes: [] },
+    {
+      count: 2,
+      scenes: [
+        { id: '1', files: [], stash_ids: [] },
+        { id: '1', files: [], stash_ids: [] },
+      ],
+    },
+    { count: 1, scenes: [{ id: '1', stash_ids: [] }] },
+  ])(
+    'does not report an explicit negative from incomplete availability data %#',
+    async (result) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { findScenes: result } }),
+      } as Response);
+      await expect(
+        adapter.findScenesByStashId(
+          'scene-1',
+          { baseUrl: 'http://stash.local' },
+          { providerKey: 'STASHDB', requireComplete: true },
+        ),
+      ).rejects.toThrow('incomplete');
+    },
+  );
+  it('ignores metadata-only and wrong-provider records in an explicit availability check', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          findScenes: {
+            count: 2,
+            scenes: [
+              {
+                id: '1',
+                files: [],
+                stash_ids: [
+                  {
+                    endpoint: 'https://stashdb.org/graphql',
+                    stash_id: 'scene-1',
+                  },
+                ],
+              },
+              {
+                id: '2',
+                files: [{ height: 1080 }],
+                stash_ids: [
+                  {
+                    endpoint: 'https://fansdb.cc/graphql',
+                    stash_id: 'scene-1',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    } as Response);
+    expect(
+      await adapter.findScenesByStashId(
+        'scene-1',
+        { baseUrl: 'http://stash.local' },
+        { providerKey: 'STASHDB', requireComplete: true },
+      ),
+    ).toEqual([]);
+  });
   it('uses browser URL for scene links while API traffic keeps its internal address and key', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

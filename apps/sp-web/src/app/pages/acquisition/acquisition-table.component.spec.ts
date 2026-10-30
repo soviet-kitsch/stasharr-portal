@@ -105,6 +105,7 @@ describe('acquisition table', () => {
       'Re-request',
       'Search again',
       'Search Hydra',
+      'Check Stash availability',
       'Item History',
       'Delete request',
     ]);
@@ -114,6 +115,7 @@ describe('acquisition table', () => {
       'Re-request',
       'Review Stash match',
       'Search Hydra',
+      'Check Stash availability',
       'Item History',
       'Delete request',
     ]);

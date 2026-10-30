@@ -83,6 +83,25 @@ describe('request action controls', () => {
     return fixture;
   }
 
+  it('checks Stash availability for a scene with no tracked request or Whisparr URL', async () => {
+    const fixture = single();
+    fixture.componentRef.setInput('tracked', false);
+    fixture.componentRef.setInput('whisparrViewUrl', null);
+    fixture.detectChanges();
+    http.expectNone(() => true);
+    await overflowAction(fixture, 'Check Stash availability');
+    http
+      .expectOne('/api/acquisition/scenes/scene-1/stash-availability')
+      .flush({
+        state: 'NOT_FOUND',
+        summary: 'No matched file.',
+        checkedAt: '2026-10-30T10:00:00Z',
+        matches: [],
+        libraryUrl: null,
+        limitation: 'Identify imported files in Stash.',
+      });
+    http.expectNone((r) => r.method !== 'GET');
+  });
   it('requires confirmation before deleting and describes the limited scope', async () => {
     const fixture = single();
     await overflowAction(fixture, 'Delete request');

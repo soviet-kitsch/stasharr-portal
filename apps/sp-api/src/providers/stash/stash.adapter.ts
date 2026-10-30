@@ -135,6 +135,8 @@ export interface StashLocalLibraryScenePage {
 }
 
 export interface StashSceneMatchOverlayConfig {
+  /** An explicit availability check must not infer absence from a partial response. */
+  requireComplete?: boolean;
   providerKey?: CatalogProviderKey | null;
   favoritePerformersOnly?: boolean;
   favoriteStudiosOnly?: boolean;
@@ -330,6 +332,31 @@ export class StashAdapter {
       sceneFilter: this.buildSceneMatchFilter(normalizedStashId, overlays),
     });
 
+    if (overlays?.requireComplete) {
+      const result = payload.data?.findScenes;
+      if (
+        !result ||
+        typeof result.count !== 'number' ||
+        !Number.isSafeInteger(result.count) ||
+        result.count < 0 ||
+        !Array.isArray(result.scenes) ||
+        result.scenes.length !== result.count ||
+        result.scenes.some(
+          (scene) =>
+            !scene ||
+            typeof scene.id !== 'string' ||
+            !scene.id.trim() ||
+            !Array.isArray(scene.files) ||
+            !Array.isArray(scene.stash_ids),
+        ) ||
+        new Set(result.scenes.map((scene) => scene.id)).size !==
+          result.scenes.length
+      ) {
+        throw new BadGatewayException(
+          'The Stash availability response is incomplete.',
+        );
+      }
+    }
     const scenes = payload.data?.findScenes?.scenes ?? [];
 
     const matches = scenes
