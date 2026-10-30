@@ -1025,3 +1025,25 @@ body {
     outline-offset: 2px;
   }
 }
+
+.app-baseline-button.app-icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
+  flex: 0 0 auto;
+  .pi {
+    font-size: 1rem;
+  }
+}
+.app-request-overflow {
+  font: inherit;
+  max-width: calc(100vw - 1rem);
+}
+@media (pointer: coarse) {
+  .app-baseline-button.app-icon-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}

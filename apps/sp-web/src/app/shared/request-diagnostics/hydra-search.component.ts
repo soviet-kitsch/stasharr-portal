@@ -26,8 +26,19 @@ import { HydraSettings, HydraTerms, hydraLink, hydraQuery } from './hydra-search
       }
     `,
   ],
-  template: ` <button class="app-baseline-button small" type="button" (click)="show()">
-      Search Hydra
+  template: ` <button
+      class="app-baseline-button small"
+      [class.app-icon-button]="compact"
+      [attr.aria-label]="compact ? 'Search Hydra' : null"
+      [attr.title]="compact ? 'Search Hydra' : null"
+      type="button"
+      (click)="show()"
+    >
+      @if (compact) {
+        <i class="pi pi-external-link" aria-hidden="true"></i>
+      } @else {
+        Search Hydra
+      }
     </button>
     <ng-template #searchBody>
       <div class="hydra-body">
@@ -138,6 +149,7 @@ export class HydraSearchComponent {
   @Input() inline = false;
   @Input({ required: true }) sceneId = '';
   @Input() sceneTitle = '';
+  @Input() compact = false;
   private readonly http = inject(HttpClient);
   protected readonly open = signal(false);
   protected readonly loading = signal(false);

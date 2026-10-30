@@ -14,6 +14,7 @@ import {
   RequestSearchAttempt,
   SceneIndex,
 } from '@prisma/client';
+import { withStashImageSize } from '../providers/stashdb/stashdb-image-url.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { IntegrationsService } from '../integrations/integrations.service';
 import {
@@ -1173,7 +1174,8 @@ export class DiagnosticsService implements OnApplicationBootstrap {
               checkedAt: reconciliation.checkedAt,
               source: provider?.providerKey ?? 'STASHDB',
               type: 'SCENE',
-              imageUrl: null,
+              imageUrl: row.imageUrl,
+              cardImageUrl: withStashImageSize(row.imageUrl, 320),
             };
           }),
           hydraConfigured: !!settings.browserUrl,

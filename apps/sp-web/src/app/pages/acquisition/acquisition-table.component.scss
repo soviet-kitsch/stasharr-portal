@@ -52,7 +52,7 @@ table {
   border-collapse: collapse;
   font-size: 0.9rem;
 }
-.scene > a {
+.scene-title {
   color: var(--text-primary);
   font-weight: 650;
   text-decoration: none;
@@ -100,13 +100,6 @@ td.status small:first-of-type {
   flex-wrap: wrap;
   min-width: 10rem;
 }
-.row-actions details {
-  width: 100%;
-}
-.row-actions summary {
-  cursor: pointer;
-  padding: 0.4rem 0;
-}
 .pagination {
   justify-content: space-between;
 }
@@ -121,7 +114,7 @@ td.status small:first-of-type {
   overflow: hidden;
   clip-path: inset(50%);
 }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .stage,
   .activity {
     display: none;
@@ -223,5 +216,51 @@ td.status small:first-of-type {
     top: 2.2rem;
     right: 0;
     white-space: nowrap;
+  }
+}
+
+.scene-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+.scene-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.scene-thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 54px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 0.3rem;
+  color: var(--text-muted);
+  background: var(--p-content-hover-background);
+}
+.scene-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scene-thumbnail:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+@media (min-width: 501px) and (max-width: 1100px) {
+  .scene-summary {
+    flex-direction: column;
+  }
+}
+@media (max-width: 500px) {
+  .scene-thumbnail {
+    width: 80px;
+    height: 45px;
+  }
+  .scene-summary {
+    gap: 0.55rem;
   }
 }

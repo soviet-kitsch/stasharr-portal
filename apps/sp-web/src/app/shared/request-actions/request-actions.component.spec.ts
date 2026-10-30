@@ -67,6 +67,26 @@ describe('request action controls', () => {
     expect(changed).toHaveBeenCalledTimes(1);
   });
 
+  it('opens secondary compact actions in an overflow menu and retains deletion confirmation', async () => {
+    const fixture = single();
+    fixture.componentRef.setInput('compact', true);
+    fixture.detectChanges();
+    const more = fixture.nativeElement.querySelector('[aria-label="More request actions"]');
+    more.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const menu = document.querySelector('.app-request-overflow')!;
+    expect(menu.textContent).toContain('Request history');
+    const remove = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+      (item) => item.textContent?.includes('Delete request'),
+    )!;
+    remove.querySelector<HTMLElement>('.p-menu-item-link')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(renderedText(fixture)).toContain('downloads and media files remain unchanged');
+    http.expectNone((r) => r.method === 'POST');
+    fixture.destroy();
+  });
   it('prevents repeated search clicks while the first action is in flight', () => {
     const fixture = single();
     button(fixture, 'Search again').click();

@@ -49,7 +49,20 @@ export interface ImportMatchReview {
   imports: [DatePipe, Dialog],
   styleUrl: './import-match-review.component.scss',
   template: `
-    <button class="app-baseline-button" type="button" (click)="show()">Review Stash match</button>
+    <button
+      class="app-baseline-button"
+      [class.app-icon-button]="compact"
+      [attr.aria-label]="compact ? 'Review Stash match' : null"
+      [attr.title]="compact ? 'Review Stash match' : null"
+      type="button"
+      (click)="show()"
+    >
+      @if (compact) {
+        <i class="pi pi-link" aria-hidden="true"></i>
+      } @else {
+        Review Stash match
+      }
+    </button>
     <p-dialog
       header="Review imported file and Stash match"
       [visible]="open()"
@@ -229,6 +242,7 @@ export interface ImportMatchReview {
 })
 export class ImportMatchReviewComponent implements OnDestroy, OnChanges {
   @Input({ required: true }) sceneId = '';
+  @Input() compact = false;
   @Output() reconciled = new EventEmitter<void>();
   protected readonly reconciling = signal(false);
   private didReconcile = false;

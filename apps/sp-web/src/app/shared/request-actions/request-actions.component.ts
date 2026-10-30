@@ -6,6 +6,8 @@ import { HttpClient } from '@angular/common/http';
 import { finalize } from 'rxjs';
 import { requestOutcomeMessage } from './request-outcome';
 import { Dialog } from 'primeng/dialog';
+import { Menu } from 'primeng/menu';
+import { MenuItem } from 'primeng/api';
 import { SceneRequestModalComponent } from '../scene-request-modal/scene-request-modal.component';
 
 interface ActionHistory {
@@ -22,49 +24,84 @@ interface ActionHistory {
 
 @Component({
   selector: 'app-request-actions',
-  imports: [Dialog, DatePipe, SceneRequestModalComponent, RequestDiagnosticsComponent],
+  imports: [Dialog, Menu, DatePipe, SceneRequestModalComponent, RequestDiagnosticsComponent],
   styleUrl: './request-actions.component.scss',
   template: `
-    <div class="app-action-row request-actions">
-      <app-request-diagnostics [sceneId]="sceneId" [sceneTitle]="sceneTitle" />
+    <div class="app-action-row request-actions" [class.compact]="compact">
+      <app-request-diagnostics [sceneId]="sceneId" [sceneTitle]="sceneTitle" [compact]="compact" />
       @if (tracked) {
         <button
           class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
+          [class.app-icon-button]="compact"
+          [attr.aria-label]="compact ? 'Re-request' : null"
+          [attr.title]="compact ? 'Re-request' : null"
           (click)="requestOpen.set(true)"
         >
-          Re-request
+          @if (compact) {
+            <i class="pi pi-replay" aria-hidden="true"></i>
+          } @else {
+            Re-request
+          }
         </button>
       }
-      @if (tracked && (!condition || condition === 'WAITING_FOR_RELEASE')) {
+      @if (tracked && searchEnabled && (!condition || condition === 'WAITING_FOR_RELEASE')) {
         <button
           class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
+          [class.app-icon-button]="compact"
+          [attr.aria-label]="compact ? 'Search again' : null"
+          [attr.title]="compact ? 'Search again' : null"
           (click)="execute('search')"
         >
-          Search again
+          @if (compact) {
+            <i class="pi pi-search" aria-hidden="true"></i>
+          } @else {
+            Search again
+          }
         </button>
       }
-      @if (tracked) {
+      <ng-content select="[requestPrimary]" />
+      @if (compact) {
+        <button
+          class="app-baseline-button app-icon-button"
+          type="button"
+          aria-label="More request actions"
+          title="More request actions"
+          [disabled]="busy()"
+          (click)="overflow.toggle($event)"
+        >
+          <i class="pi pi-ellipsis-v" aria-hidden="true"></i>
+        </button>
+        <p-menu
+          #overflow
+          [model]="overflowItems"
+          [popup]="true"
+          appendTo="body"
+          styleClass="app-request-overflow"
+        />
+      } @else {
+        @if (tracked) {
+          <button
+            class="app-baseline-button secondary-action small"
+            type="button"
+            [disabled]="busy()"
+            (click)="deleteOpen.set(true)"
+          >
+            Delete request
+          </button>
+        }
         <button
           class="app-baseline-button secondary-action small"
           type="button"
           [disabled]="busy()"
-          (click)="deleteOpen.set(true)"
+          (click)="showHistory()"
         >
-          Delete request
+          Request history
         </button>
       }
-      <button
-        class="app-baseline-button secondary-action small"
-        type="button"
-        [disabled]="busy()"
-        (click)="showHistory()"
-      >
-        Request history
-      </button>
     </div>
     @if (message()) {
       <p role="status">{{ message() }}</p>
@@ -172,6 +209,22 @@ export class RequestActionsComponent {
   @Input() sceneTitle = '';
   @Input() condition: string | null = null;
   @Input() tracked = true;
+  @Input() compact = false;
+  @Input() searchEnabled = true;
+  protected get overflowItems(): MenuItem[] {
+    return [
+      { label: 'Request history', icon: 'pi pi-history', command: () => this.showHistory() },
+      ...(this.tracked
+        ? [
+            {
+              label: 'Delete request',
+              icon: 'pi pi-trash',
+              command: () => this.deleteOpen.set(true),
+            },
+          ]
+        : []),
+    ];
+  }
   @Output() changed = new EventEmitter<void>();
   private readonly http = inject(HttpClient);
   protected readonly busy = signal(false);

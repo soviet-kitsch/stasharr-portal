@@ -230,6 +230,28 @@ describe('automatic request observations', () => {
       'Invalid history cursor',
     );
   });
+  it('returns cached thumbnail URLs without requesting catalog metadata', async () => {
+    const f = fixture();
+    f.db.sceneIndex.findMany.mockResolvedValue([
+      {
+        stashId: 'pictured',
+        imageUrl: 'https://images.example/scene.jpg?size=1200',
+        diagnostics: null,
+      },
+      { stashId: 'missing', imageUrl: null, diagnostics: null },
+    ]);
+    const result = await f.service.table({});
+    expect(result.items.map((row) => [row.imageUrl, row.cardImageUrl])).toEqual(
+      [
+        [
+          'https://images.example/scene.jpg?size=1200',
+          'https://images.example/scene.jpg?size=320',
+        ],
+        [null, null],
+      ],
+    );
+    expect(f.native).not.toHaveBeenCalled();
+  });
   it('preserves text filtering when adding an unknown-evidence blocker', async () => {
     const f = fixture();
     await f.service.table({ q: 'Example', blocker: 'UNKNOWN' });

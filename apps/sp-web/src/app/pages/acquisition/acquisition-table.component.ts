@@ -8,7 +8,6 @@ import {
   AcquisitionSceneItem,
   AcquisitionCountsByLifecycle,
 } from '../../core/api/acquisition.types';
-import { RequestDiagnosticsComponent } from '../../shared/request-diagnostics/request-diagnostics.component';
 import { HydraSearchComponent } from '../../shared/request-diagnostics/hydra-search.component';
 import { RequestActionsComponent } from '../../shared/request-actions/request-actions.component';
 import { RequestBatchActionsComponent } from '../../shared/request-actions/request-batch-actions.component';
@@ -40,7 +39,6 @@ interface Table {
     DatePipe,
     FormsModule,
     RouterLink,
-    RequestDiagnosticsComponent,
     HydraSearchComponent,
     RequestActionsComponent,
     RequestBatchActionsComponent,
@@ -57,6 +55,14 @@ export class AcquisitionTableComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(false);
   protected readonly selecting = signal(false);
   protected readonly message = signal('');
+  private readonly failedThumbnails = signal(new Set<string>());
+  protected thumbnail(row: Row): string | null {
+    const image = row.cardImageUrl || row.imageUrl;
+    return image && !this.failedThumbnails().has(image) ? image : null;
+  }
+  protected thumbnailFailed(image: string): void {
+    this.failedThumbnails.update((failed) => new Set([...failed, image]));
+  }
   protected readonly selected = signal<Row[]>([]);
   protected readonly stages = [
     { id: 'ANY', label: 'All tracked' },

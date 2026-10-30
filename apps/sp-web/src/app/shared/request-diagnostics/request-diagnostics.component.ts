@@ -84,8 +84,19 @@ interface Details {
       }
     `,
   ],
-  template: ` <button class="app-baseline-button small" type="button" (click)="show()">
-      Request details
+  template: ` <button
+      class="app-baseline-button small"
+      [class.app-icon-button]="compact"
+      [attr.aria-label]="compact ? 'Request details' : null"
+      [attr.title]="compact ? 'Request details' : null"
+      type="button"
+      (click)="show()"
+    >
+      @if (compact) {
+        <i class="pi pi-list" aria-hidden="true"></i>
+      } @else {
+        Request details
+      }
     </button>
     <p-dialog
       header="Request details"
@@ -264,6 +275,7 @@ interface Details {
 export class RequestDiagnosticsComponent implements OnDestroy {
   @Input({ required: true }) sceneId = '';
   @Input() sceneTitle = '';
+  @Input() compact = false;
   private readonly http = inject(HttpClient);
   protected readonly open = signal(false);
   protected readonly busy = signal(false);

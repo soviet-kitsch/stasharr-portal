@@ -29,3 +29,9 @@ p {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
+
+.request-actions.compact {
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+  margin: 0;
+}

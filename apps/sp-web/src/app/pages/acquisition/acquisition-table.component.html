@@ -122,19 +122,47 @@
               />
             </td>
             <td class="scene">
-              <a [routerLink]="['/scene', row.id]" [queryParams]="{ returnTo: routerUrl() }">{{
-                row.title
-              }}</a
-              ><small>
-                @if (row.studioId) {
-                  <a [routerLink]="['/studio', row.studioId]">{{ row.studio }}</a>
-                } @else {
-                  {{ row.studio }}
-                }
-                @if (row.performers.length) {
-                  · {{ row.performers.join(', ') }}
-                }
-              </small>
+              <div class="scene-summary">
+                <a
+                  class="scene-thumbnail"
+                  [routerLink]="['/scene', row.id]"
+                  [queryParams]="{ returnTo: routerUrl() }"
+                  [attr.aria-label]="'Open ' + row.title"
+                >
+                  @if (thumbnail(row); as image) {
+                    <img
+                      [src]="image"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      width="96"
+                      height="54"
+                      (error)="thumbnailFailed(image)"
+                    />
+                  } @else {
+                    <i class="pi pi-image" aria-hidden="true"></i>
+                    <span class="sr-only">No thumbnail available</span>
+                  }
+                </a>
+                <div class="scene-copy">
+                  <a
+                    class="scene-title"
+                    [routerLink]="['/scene', row.id]"
+                    [queryParams]="{ returnTo: routerUrl() }"
+                    >{{ row.title }}</a
+                  >
+                  <small>
+                    @if (row.studioId) {
+                      <a [routerLink]="['/studio', row.studioId]">{{ row.studio }}</a>
+                    } @else {
+                      {{ row.studio }}
+                    }
+                    @if (row.performers.length) {
+                      · {{ row.performers.join(', ') }}
+                    }
+                  </small>
+                </div>
+              </div>
             </td>
             <td class="stage">{{ label(row.status.state) }}</td>
             <td class="status">
@@ -151,22 +179,31 @@
             </td>
             <td>
               <div class="row-actions">
-                <app-request-diagnostics [sceneId]="row.id" [sceneTitle]="row.title" />
-                @if (data()?.hydraConfigured) {
-                  <app-hydra-search [sceneId]="row.id" [sceneTitle]="row.title" />
-                }
-                <details>
-                  <summary>Recovery actions</summary>
-                  <app-request-actions
-                    [sceneId]="row.id"
-                    [sceneTitle]="row.title"
-                    [condition]="row.reconciliation?.condition ?? null"
-                    (changed)="actionsFinished()"
-                  />
+                <app-request-actions
+                  [sceneId]="row.id"
+                  [sceneTitle]="row.title"
+                  [condition]="row.reconciliation?.condition ?? null"
+                  [searchEnabled]="row.status.state !== 'IMPORT_PENDING'"
+                  [compact]="true"
+                  (changed)="actionsFinished()"
+                >
                   @if (row.status.state === 'IMPORT_PENDING') {
-                    <app-import-match-review [sceneId]="row.id" (reconciled)="actionsFinished()" />
+                    <app-import-match-review
+                      requestPrimary
+                      [sceneId]="row.id"
+                      [compact]="true"
+                      (reconciled)="actionsFinished()"
+                    />
                   }
-                </details>
+                  @if (data()?.hydraConfigured) {
+                    <app-hydra-search
+                      requestPrimary
+                      [sceneId]="row.id"
+                      [sceneTitle]="row.title"
+                      [compact]="true"
+                    />
+                  }
+                </app-request-actions>
               </div>
             </td>
           </tr>

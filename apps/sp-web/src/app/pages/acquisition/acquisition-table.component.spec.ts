@@ -76,6 +76,51 @@ describe('acquisition table', () => {
     http.expectNone((r) => r.url.includes('/diagnostics'));
     fixture.destroy();
   });
+  it('shows lazy thumbnails and replaces missing or broken artwork with a neutral fallback', () => {
+    const { fixture, component } = setup();
+    component.data.set(
+      response([
+        { ...row('pictured'), imageUrl: '/full.jpg', cardImageUrl: '/thumb.jpg' },
+        row('missing'),
+      ]),
+    );
+    fixture.detectChanges();
+    const image = fixture.nativeElement.querySelector('.scene-thumbnail img');
+    expect(image.getAttribute('src')).toBe('/thumb.jpg');
+    expect(image.getAttribute('loading')).toBe('lazy');
+    expect(fixture.nativeElement.querySelectorAll('.scene-thumbnail .pi-image')).toHaveLength(1);
+    image.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.scene-thumbnail img')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('.scene-thumbnail .pi-image')).toHaveLength(2);
+    fixture.destroy();
+  });
+  it('keeps four labelled primary icon actions visible and swaps search for match review on imports', () => {
+    const { fixture, component } = setup();
+    const controls = () =>
+      Array.from(fixture.nativeElement.querySelectorAll('.request-actions button')).map(
+        (button: any) => button.getAttribute('aria-label'),
+      );
+    expect(controls()).toEqual([
+      'Request details',
+      'Re-request',
+      'Search again',
+      'Search Hydra',
+      'More request actions',
+    ]);
+    component.data.set(response([{ ...row('imported'), status: { state: 'IMPORT_PENDING' } }]));
+    fixture.detectChanges();
+    expect(controls()).toEqual([
+      'Request details',
+      'Re-request',
+      'Review Stash match',
+      'Search Hydra',
+      'More request actions',
+    ]);
+    expect(fixture.nativeElement.querySelector('.row-actions details')).toBeNull();
+    http.expectNone((r) => r.method === 'POST');
+    fixture.destroy();
+  });
   it('selects all filtered rows across API-sized pages and preserves exact identities', async () => {
     const { fixture, component } = setup();
     const pending = component.selectAll();
