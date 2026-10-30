@@ -1055,3 +1055,8 @@ body {
 .app-deletion-dialog .p-dialog-header {
   padding-block: 1rem;
 }
+
+// Keep the results body at its natural height; the outer dialog scrolls on short viewports.
+.app-stash-results-dialog .p-dialog-content {
+  display: block;
+}

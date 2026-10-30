@@ -5,7 +5,7 @@
       <p class="app-page-lede">Track requests and resolve blockers.</p>
     </div>
     <div class="app-action-row">
-      <app-stash-search-all /><button
+      <app-stash-search-all (changed)="actionsFinished()" /><button
         class="app-baseline-button"
         [disabled]="loading()"
         (click)="refresh()"
