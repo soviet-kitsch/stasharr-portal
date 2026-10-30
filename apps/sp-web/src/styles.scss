@@ -1048,3 +1048,10 @@ body {
     --app-icon-button-size: 2.75rem;
   }
 }
+
+.app-deletion-dialog .p-dialog-content {
+  gap: 0.5rem;
+}
+.app-deletion-dialog .p-dialog-header {
+  padding-block: 1rem;
+}

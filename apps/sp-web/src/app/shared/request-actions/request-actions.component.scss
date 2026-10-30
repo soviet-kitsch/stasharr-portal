@@ -10,3 +10,19 @@ p {
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
+
+.deletion-summary {
+  margin: 0.2rem 0;
+  font-size: 0.9rem;
+}
+.deletion-choice {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-block: 0.25rem;
+  font-size: 0.9rem;
+}
+.deletion-choice input {
+  flex: none;
+  margin-top: 0.2rem;
+}

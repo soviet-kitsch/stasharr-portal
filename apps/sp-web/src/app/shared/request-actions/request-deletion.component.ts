@@ -1,9 +1,10 @@
 import { Component, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Dialog } from 'primeng/dialog';
+import { DeletionReviewComponent } from './deletion-review.component';
 import { newOperationKey } from '../../core/api/operation-key';
 
-interface DeletionPreview {
+export interface DeletionPreview {
   whisparrSceneId: number;
   title: string;
   folder: string;
@@ -15,32 +16,23 @@ interface DeletionPreview {
 }
 @Component({
   selector: 'app-request-deletion',
-  imports: [Dialog],
+  imports: [Dialog, DeletionReviewComponent],
   styles: [
     `
       .choice {
         display: flex;
-        gap: 0.65rem;
+        gap: 0.6rem;
         align-items: flex-start;
-        margin-block: 1rem;
+        margin-block: 0.25rem;
+        font-size: 0.9rem;
       }
       .choice input {
         flex: none;
-        margin-top: 0.25rem;
+        margin-top: 0.2rem;
       }
-      .scope {
-        padding: 0.8rem;
-        border: 1px solid var(--p-content-border-color);
-        border-radius: 0.4rem;
-      }
-      .scope p,
-      .scope li {
-        overflow-wrap: anywhere;
-      }
-      .scope ul {
-        max-height: 9rem;
-        overflow: auto;
-        padding-left: 1.25rem;
+      .summary {
+        margin: 0.2rem 0;
+        font-size: 0.9rem;
       }
       .error {
         color: var(--p-red-500);
@@ -50,7 +42,7 @@ interface DeletionPreview {
   ],
   template: `
     <p-dialog
-      styleClass="app-review-dialog"
+      styleClass="app-review-dialog app-deletion-dialog"
       [header]="deleteFiles() ? 'Delete request, scene & files?' : 'Delete request from Portal?'"
       [visible]="open"
       (visibleChange)="close()"
@@ -60,15 +52,15 @@ interface DeletionPreview {
       [appendTo]="'body'"
       [closable]="!busy()"
       [closeOnEscape]="!busy()"
-      [style]="{ width: '36rem', maxWidth: '95vw' }"
+      [style]="{ width: '34rem', maxWidth: '95vw' }"
     >
-      <p>{{ sceneTitle }}</p>
-      @if (!deleteFiles()) {
-        <p>
-          This removes the request from Portal's active queue. Whisparr entries, downloads and media
-          files remain unchanged. The history is kept, and you can restore the request.
-        </p>
-      }
+      <p class="summary">
+        {{
+          deleteFiles()
+            ? 'Delete the reviewed scene folder. May be permanent.'
+            : 'Remove this request from Portal only.'
+        }}
+      </p>
       <label class="choice">
         <input
           type="checkbox"
@@ -78,45 +70,23 @@ interface DeletionPreview {
         />
         <span>Also delete the scene and its files from Whisparr</span>
       </label>
-      @if (deleteFiles()) {
-        @if (loading()) {
-          <p role="status">Checking the Whisparr match and files…</p>
-        }
-        @if (preview(); as target) {
-          <div class="scope">
-            <p>
-              <strong>{{ target.title }}</strong> · Whisparr #{{ target.whisparrSceneId }}
-            </p>
-            <p>Catalog scene: {{ sceneId }}</p>
-            <p><strong>Entire scene folder:</strong> {{ target.folder }}</p>
-            <p>
-              Whisparr removes this whole folder, including sidecars and any other files inside it.
-              Known media files: {{ target.files.length }}.
-            </p>
-            <ul>
-              @for (file of target.files; track file.id) {
-                <li>{{ file.path }}</li>
-              }
-            </ul>
-            <p>{{ target.recovery }}</p>
-            <p>
-              File cleanup runs in Whisparr asynchronously. Restoring this Portal request will not
-              restore files. Stash records are kept, but may point to removed files.
-            </p>
-            <a [href]="target.whisparrUrl" target="_blank" rel="noopener noreferrer"
-              >Review in Whisparr</a
-            >
-          </div>
-          <label class="choice">
-            <input
-              type="checkbox"
-              [checked]="acknowledged()"
-              [disabled]="busy() || uncertain()"
-              (change)="acknowledged.set($any($event.target).checked)"
-            />
-            <span>I reviewed this scene and folder and want Whisparr to delete them.</span>
-          </label>
-        }
+      @if (loading()) {
+        <p class="summary" role="status">Checking the Whisparr match and files…</p>
+      }
+      <app-deletion-review
+        [items]="[{ id: sceneId, title: sceneTitle, target: preview() }]"
+        [deleteFiles]="deleteFiles()"
+      />
+      @if (deleteFiles() && preview()) {
+        <label class="choice">
+          <input
+            type="checkbox"
+            [checked]="acknowledged()"
+            [disabled]="busy() || uncertain()"
+            (change)="acknowledged.set($any($event.target).checked)"
+          />
+          <span>I reviewed this scene and folder and want Whisparr to delete them.</span>
+        </label>
       }
       @if (error()) {
         <p class="error" role="alert">{{ error() }}</p>
