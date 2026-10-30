@@ -209,7 +209,32 @@ describe('top-level Search Stash for all', () => {
     );
     http.expectNone(() => true);
   });
-  it('only offers a frozen Portal-only review for confirmed copies, with no deletion before confirmation', () => {
+
+  const preview = (id: string, nativeId: number | null = 42) => ({
+    sceneId: id,
+    whisparrSceneId: nativeId,
+    title: 'Synthetic entry',
+    whisparrUrl: nativeId === null ? null : 'https://whisparr.example/movie/' + nativeId,
+    filesKept: true,
+    previewToken: 'signed-' + id,
+    expiresAt: new Date(Date.now() + 300000).toISOString(),
+  });
+  async function reviewed(c: any, nativeId: number | null = 42) {
+    const run = c.reviewDeletion(c.removable());
+    for (const e of c.removable()) {
+      http
+        .expectOne('/api/requests/' + e.id + '/whisparr-entry-deletion-preview')
+        .flush(preview(e.id, nativeId));
+      await tick();
+    }
+    await run;
+  }
+  const removed = (nativeId: number | null = 42) => ({
+    outcome: 'WHISPARR_ENTRY_CLEANED',
+    whisparrSceneId: nativeId,
+    filesKept: true,
+  });
+  it('only reviews confirmed copies, fetching previews without deletion before confirmation', async () => {
     const { c } = setup();
     c.entries.set([
       { ...scene(0), result: value('NOT_FOUND') },
@@ -217,135 +242,163 @@ describe('top-level Search Stash for all', () => {
       { ...scene(2), result: value('UNAVAILABLE') },
       { ...scene(3), result: { ...value(), matches: [] } },
     ]);
-    c.reviewDeletion(c.entries());
+    const run = c.reviewDeletion(c.entries());
     expect(c.deletionTargets().map((e: any) => e.id)).toEqual(['scene-1']);
-    expect(c.deletionReviewOpen()).toBe(true);
-    http.expectNone(() => true);
-    c.deletionReviewOpen.set(false);
+    http.expectNone((r) => r.method === 'POST');
+    http
+      .expectOne('/api/requests/scene-1/whisparr-entry-deletion-preview')
+      .flush(preview('scene-1'));
+    await run;
+    expect(c.deletionItems()[0].entryTarget.id).toBe(42);
+    c.cancelReview();
     http.expectNone((r) => r.method === 'POST');
   });
-  it('deletes the Portal request, preserves copy links and prevents duplicate clicks', async () => {
+  it('waits for reviewed Whisparr identity, deletes entry only, preserves copy links and blocks duplicate submits', async () => {
     const { c } = setup();
     const changed = vi.spyOn(c.changed, 'emit');
     c.entries.set([{ ...scene(1), result: value() }]);
-    c.reviewDeletion(c.removable());
+    const review = c.reviewDeletion(c.removable());
+    await c.deleteConfirmed();
+    http.expectNone((r) => r.method === 'POST');
+    http
+      .expectOne('/api/requests/scene-1/whisparr-entry-deletion-preview')
+      .flush(preview('scene-1'));
+    await review;
     const run = c.deleteConfirmed();
     c.deleteConfirmed();
-    const request = http.expectOne('/api/requests/batch/execute');
-    expect(request.request.body).toEqual({
-      kind: 'DISMISS',
-      ids: ['scene-1'],
+    const req = http.expectOne('/api/requests/scene-1/delete-whisparr-entry');
+    expect(req.request.body).toEqual({
       operationKey: expect.any(String),
+      previewToken: 'signed-scene-1',
+      confirmDeleteEntry: true,
     });
-    request.flush({ results: [{ id: 'scene-1', ok: true, result: { outcome: 'DISMISSED' } }] });
+    expect(req.request.body.deleteFiles).toBeUndefined();
+    expect(req.request.body.confirmDeleteFiles).toBeUndefined();
+    req.flush(removed());
     await run;
     expect(c.entries()[0].removed).toBe(true);
     expect(c.entries()[0].result.matches[0].viewUrl).toContain('/scenes/local-1');
-    expect(c.removable()).toEqual([]);
     expect(changed).toHaveBeenCalledOnce();
+    expect(c.removable()).toEqual([]);
     c.deleteConfirmed();
     http.expectNone((r) => r.method === 'POST');
   });
-  it('uses bounded groups of twenty and one stable operation key for the reviewed cleanup', async () => {
+  it('supports verified absence without fabricating a Whisparr entry', async () => {
     const { c } = setup();
-    c.entries.set(Array.from({ length: 45 }, (_, i) => ({ ...scene(i), result: value() })));
-    c.reviewDeletion(c.removable());
+    c.entries.set([{ ...scene(1), result: value() }]);
+    await reviewed(c, null);
+    expect(c.deletionItems()[0].status).toContain('Portal only');
     const run = c.deleteConfirmed();
-    let key = '';
-    for (const offset of [0, 20, 40]) {
-      const request = http.expectOne('/api/requests/batch/execute');
-      const ids = Array.from(
-        { length: Math.min(20, 45 - offset) },
-        (_, i) => 'scene-' + (offset + i),
-      );
-      expect(request.request.body.ids).toEqual(ids);
-      key ||= request.request.body.operationKey;
-      expect(request.request.body.operationKey).toBe(key);
-      request.flush({
-        results: ids.map((id) => ({ id, ok: true, result: { outcome: 'DISMISSED' } })),
-      });
+    http.expectOne('/api/requests/scene-1/delete-whisparr-entry').flush(removed(null));
+    await run;
+    expect(c.entries()[0].removed).toBe(true);
+  });
+  it('processes individually reviewed targets sequentially, with a distinct stable key per scene', async () => {
+    const { c } = setup();
+    c.entries.set(Array.from({ length: 21 }, (_, i) => ({ ...scene(i), result: value() })));
+    await reviewed(c);
+    const run = c.deleteConfirmed();
+    const keys = new Set();
+    for (let i = 0; i < 21; i++) {
+      const req = http.expectOne('/api/requests/scene-' + i + '/delete-whisparr-entry');
+      keys.add(req.request.body.operationKey);
+      http.expectNone((r) => r.method === 'POST');
+      req.flush(removed());
       await tick();
     }
     await run;
+    expect(keys.size).toBe(21);
     expect(c.entries().every((e: any) => e.removed)).toBe(true);
   });
-  it('retains the reviewed key after uncertain results and recovers without starting a new cleanup', async () => {
+  it('retains original reviewed keys and tokens after partial unknown results and replays instead of issuing fresh deletion', async () => {
     const { c } = setup();
-    c.entries.set(Array.from({ length: 21 }, (_, i) => ({ ...scene(i), result: value() })));
-    c.reviewDeletion(c.removable());
+    c.entries.set([0, 1, 2].map((i) => ({ ...scene(i), result: value() })));
+    await reviewed(c);
     let run = c.deleteConfirmed();
-    const first = http.expectOne('/api/requests/batch/execute');
-    const key = first.request.body.operationKey;
-    first.flush({
-      results: first.request.body.ids.map((id: string) => ({
-        id,
-        ok: true,
-        result: { outcome: 'DISMISSED' },
-      })),
-    });
+    const first = http.expectOne('/api/requests/scene-0/delete-whisparr-entry');
+    const bodies = [first.request.body];
+    first.flush(removed());
     await tick();
-    http.expectOne('/api/requests/batch/execute').flush({}, { status: 503, statusText: 'Offline' });
+    const second = http.expectOne('/api/requests/scene-1/delete-whisparr-entry');
+    bodies.push(second.request.body);
+    second.flush({}, { status: 503, statusText: 'Offline' });
     await run;
-    expect(c.entries().filter((e: any) => e.removed)).toHaveLength(20);
+    expect(c.entries().filter((e: any) => e.removed)).toHaveLength(1);
     expect(c.deletionPending()).toBe(true);
-    http.expectNone((r) => r.method === 'POST');
-    c.deletionReviewOpen.set(false);
-    c.reviewDeletion([c.entries()[20]]);
-    expect(c.deletionTargets()).toHaveLength(21);
+    http.expectNone('/api/requests/scene-2/delete-whisparr-entry');
+    c.cancelReview();
     await c.show();
-    http.expectNone((r) => r.url === '/api/acquisition/table');
+    await c.reviewDeletion([c.entries()[2]]);
+    expect(c.deletionTargets()).toHaveLength(3);
+    http.expectNone((r) => r.method === 'GET');
     run = c.deleteConfirmed();
-    for (const count of [20, 1]) {
-      const request = http.expectOne('/api/requests/batch/execute');
-      expect(request.request.body.operationKey).toBe(key);
-      expect(request.request.body.ids).toHaveLength(count);
-      request.flush({
-        results: request.request.body.ids.map((id: string) => ({
-          id,
-          ok: true,
-          result: { outcome: 'DISMISSED' },
-        })),
-      });
+    for (let i = 0; i < 3; i++) {
+      const req = http.expectOne('/api/requests/scene-' + i + '/delete-whisparr-entry');
+      if (i < 2) expect(req.request.body).toEqual(bodies[i]);
+      req.flush(removed());
       await tick();
     }
     await run;
     expect(c.deletionPending()).toBe(false);
     expect(c.entries().every((e: any) => e.removed)).toBe(true);
   });
-  it('does not mislabel an incomplete success response as a confirmed removal', async () => {
+  it('does not mislabel a malformed or wrong-scene success as confirmed removal', async () => {
     const { c } = setup();
     c.entries.set([{ ...scene(1), result: value() }]);
-    c.reviewDeletion(c.removable());
+    await reviewed(c);
     const run = c.deleteConfirmed();
-    http.expectOne('/api/requests/batch/execute').flush({ results: [] });
+    http.expectOne('/api/requests/scene-1/delete-whisparr-entry').flush(removed(99));
     await run;
     expect(c.entries()[0].removed).toBeUndefined();
     expect(c.deletionPending()).toBe(true);
   });
-  it('leaves blocked requests in the results with their reason', async () => {
+  it('keeps blocked or unverified previews, while allowing only other verified items to proceed', async () => {
     const { c } = setup();
-    c.entries.set([{ ...scene(1), result: value() }]);
-    c.reviewDeletion(c.removable());
-    const run = c.deleteConfirmed();
+    c.entries.set([0, 1].map((i) => ({ ...scene(i), result: value() })));
+    const review = c.reviewDeletion(c.removable());
     http
-      .expectOne('/api/requests/batch/execute')
-      .flush({ results: [{ id: 'scene-1', ok: false, message: 'Another action is active.' }] });
+      .expectOne('/api/requests/scene-0/whisparr-entry-deletion-preview')
+      .flush({ message: 'An active transfer is running.' }, { status: 409, statusText: 'Blocked' });
+    await tick();
+    http
+      .expectOne('/api/requests/scene-1/whisparr-entry-deletion-preview')
+      .flush(preview('scene-1'));
+    await review;
+    expect(c.deletionItems()[0].message).toContain('active transfer');
+    expect(c.readyTargets()).toHaveLength(1);
+    const run = c.deleteConfirmed();
+    http.expectOne('/api/requests/scene-1/delete-whisparr-entry').flush(removed());
     await run;
     expect(c.entries()[0].removed).not.toBe(true);
-    expect(c.entries()[0].deletionProblem).toContain('Another action');
+    http.expectNone('/api/requests/scene-0/delete-whisparr-entry');
   });
-  it('does not start cleanup during checks, and navigation cancels further queued groups', async () => {
+  it('blocks malformed previews and cancels in-flight review without later deletion', async () => {
     const { c } = setup();
-    c.entries.set(Array.from({ length: 21 }, (_, i) => ({ ...scene(i), result: value() })));
+    c.entries.set([0, 1].map((i) => ({ ...scene(i), result: value() })));
+    const run = c.reviewDeletion(c.removable());
+    http.expectOne('/api/requests/scene-0/whisparr-entry-deletion-preview').flush({});
+    await tick();
+    expect(c.readyTargets()).toHaveLength(0);
+    const pending = http.expectOne('/api/requests/scene-1/whisparr-entry-deletion-preview');
+    c.cancelReview();
+    expect(pending.cancelled).toBe(true);
+    await run;
+    expect(c.previewLoading()).toBe(false);
+    await c.deleteConfirmed();
+    http.expectNone((r) => r.method === 'POST');
+  });
+  it('does not start cleanup during checks, and navigation cancels later deletions', async () => {
+    const { c } = setup();
+    c.entries.set([0, 1].map((i) => ({ ...scene(i), result: value() })));
     c.running.set(true);
-    c.reviewDeletion(c.entries());
+    await c.reviewDeletion(c.entries());
     expect(c.deletionTargets()).toEqual([]);
     c.running.set(false);
-    c.reviewDeletion(c.removable());
+    await reviewed(c);
     const run = c.deleteConfirmed();
-    const request = http.expectOne('/api/requests/batch/execute');
+    const req = http.expectOne('/api/requests/scene-0/delete-whisparr-entry');
     c.ngOnDestroy();
-    expect(request.cancelled).toBe(true);
+    expect(req.cancelled).toBe(true);
     await run;
     http.expectNone((r) => r.method === 'POST');
   });

@@ -271,6 +271,7 @@ export class RequestDiagnosticsComponent implements OnDestroy {
           RE_REQUEST: 'Re-request',
           SEARCH: 'Search again',
           DISMISS: 'Delete from Portal',
+          DELETE_WHISPARR_ENTRY: 'Delete Whisparr entry (keep files)',
           DELETE_WHISPARR: 'Delete scene and files in Whisparr',
           RESTORE: 'Restore request',
           DIAGNOSTIC_SEARCH: 'Diagnostic search',

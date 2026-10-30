@@ -1,3 +1,4 @@
+import { RequestEntryDeletionService } from './request-entry-deletion.service';
 import {
   RequestDeletionService,
   canonicalDeletionPath,
@@ -65,6 +66,9 @@ function setup() {
     roots: jest.fn(async () => [{ path: '/media/library', accessible: true }]),
     files: jest.fn(async () => [{ ...file }]),
     assertIdle: jest.fn(async () => undefined),
+    deleteSceneEntry: jest.fn(async () => {
+      removed = true;
+    }),
     deleteSceneAndFiles: jest.fn(async () => {
       removed = true;
     }),
@@ -96,6 +100,15 @@ function setup() {
   );
   return {
     service,
+    entryService: new RequestEntryDeletionService(
+      prisma,
+      integrations,
+      catalog,
+      native,
+      { buildSceneViewUrl: (base, id) => base + '/movie/' + id } as any,
+      new RequestOperationsService(prisma),
+      indexing,
+    ),
     native,
     prisma,
     actions,
@@ -243,4 +256,144 @@ describe('reviewed Whisparr request deletion', () => {
       expect(() => canonicalDeletionPath(path)).toThrow();
     },
   );
+});
+
+describe('reviewed entry-only cleanup from Stash search', () => {
+  const dto = (preview: { previewToken: string }) => ({
+    operationKey: key,
+    previewToken: preview.previewToken,
+    confirmDeleteEntry: true,
+  });
+  it('removes exactly one reviewed entry, keeps files and replays without another native DELETE', async () => {
+    const f = setup();
+    const preview = await f.entryService.preview(id);
+    expect(preview.whisparrSceneId).toBe(42);
+    expect(preview.filesKept).toBe(true);
+    expect(f.native.deleteSceneEntry).not.toHaveBeenCalled();
+    const result = await f.entryService.remove(id, dto(preview));
+    expect(result).toMatchObject({
+      outcome: 'WHISPARR_ENTRY_CLEANED',
+      whisparrSceneId: 42,
+      filesKept: true,
+    });
+    expect(f.native.deleteSceneEntry).toHaveBeenCalledWith(
+      42,
+      expect.anything(),
+    );
+    expect(f.native.deleteSceneAndFiles).not.toHaveBeenCalled();
+    expect(await f.entryService.remove(id, dto(preview))).toEqual(result);
+    expect(f.native.deleteSceneEntry).toHaveBeenCalledTimes(1);
+    expect(f.row.dismissedAt).toBeInstanceOf(Date);
+  });
+  it('removes only the Portal request after verifying that no exact Whisparr entry exists', async () => {
+    const f = setup();
+    f.markRemoved();
+    const preview = await f.entryService.preview(id);
+    expect(preview.whisparrSceneId).toBeNull();
+    const result = await f.entryService.remove(id, dto(preview));
+    expect(result.whisparrSceneId).toBeNull();
+    expect(f.native.deleteSceneEntry).not.toHaveBeenCalled();
+    expect(f.native.deleteSceneAndFiles).not.toHaveBeenCalled();
+    expect(f.row.dismissedAt).toBeInstanceOf(Date);
+  });
+  it.each(['busy', 'duplicate', 'offline', 'active claim', 'wrong provider'])(
+    'blocks %s during review without dismissing the request',
+    async (reason) => {
+      const f = setup();
+      if (reason === 'busy')
+        f.native.assertIdle.mockRejectedValue(new Error('busy'));
+      if (reason === 'duplicate')
+        f.native.scenes.mockResolvedValue([scene, { ...scene, id: 43 }]);
+      if (reason === 'offline')
+        f.native.scenes.mockRejectedValue(new Error('offline'));
+      if (reason === 'active claim') f.row.activeActionId = key;
+      if (reason === 'wrong provider')
+        f.catalog.getConfiguredCatalogProvider.mockResolvedValue({
+          providerKey: 'OTHER',
+          baseUrl: 'https://other.invalid',
+        });
+      await expect(f.entryService.preview(id)).rejects.toThrow();
+      expect(f.row.dismissedAt).toBeUndefined();
+      expect(f.native.deleteSceneEntry).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    'missing confirmation',
+    'tampered',
+    'expired',
+    'connection changed',
+    'entry changed',
+    'entry added',
+    'entry vanished',
+    'became busy',
+  ])('blocks %s between review and dispatch', async (reason) => {
+    const f = setup();
+    if (reason === 'entry added') f.native.scenes.mockResolvedValue([]);
+    const preview = await f.entryService.preview(id);
+    const body = dto(preview);
+    if (reason === 'missing confirmation') body.confirmDeleteEntry = false;
+    if (reason === 'tampered') body.previewToken += 'x';
+    if (reason === 'expired')
+      jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 360000);
+    if (reason === 'connection changed')
+      f.config.baseUrl = 'http://changed.invalid';
+    if (reason === 'entry changed')
+      f.native.scenes.mockResolvedValue([{ ...scene, id: 43 }]);
+    if (reason === 'entry added') f.native.scenes.mockResolvedValue([scene]);
+    if (reason === 'entry vanished') f.markRemoved();
+    if (reason === 'became busy')
+      f.native.assertIdle.mockRejectedValue(new Error('busy'));
+    try {
+      await expect(f.entryService.remove(id, body)).rejects.toThrow();
+    } finally {
+      jest.restoreAllMocks();
+    }
+    expect(f.native.deleteSceneEntry).not.toHaveBeenCalled();
+    expect(f.row.dismissedAt).toBeUndefined();
+  });
+  it('does not accept a file-deletion preview for entry-only cleanup or vice versa', async () => {
+    const f = setup();
+    const files = await f.service.preview(id),
+      entry = await f.entryService.preview(id);
+    await expect(f.entryService.remove(id, dto(files))).rejects.toThrow(
+      'invalid',
+    );
+    await expect(
+      f.service.remove(id, { ...dto(entry), confirmDeleteFiles: true }),
+    ).rejects.toThrow('invalid');
+    expect(f.native.deleteSceneEntry).not.toHaveBeenCalled();
+    expect(f.native.deleteSceneAndFiles).not.toHaveBeenCalled();
+  });
+  it('keeps uncertain operations claimed, never resends, and recovers by verifying absence', async () => {
+    const f = setup();
+    const preview = await f.entryService.preview(id);
+    f.native.deleteSceneEntry.mockRejectedValue(new Error('timeout'));
+    await expect(f.entryService.remove(id, dto(preview))).rejects.toThrow(
+      'may have reached',
+    );
+    expect(f.row.dismissedAt).toBeUndefined();
+    expect(f.row.activeActionId).toBe(key);
+    await expect(f.entryService.remove(id, dto(preview))).rejects.toThrow();
+    await expect(f.entryService.recoverIfNeeded(id)).rejects.toThrow(
+      'not yet confirmed',
+    );
+    f.markRemoved();
+    const result = await f.entryService.recoverIfNeeded(id);
+    expect(result).toMatchObject({
+      filesKept: true,
+      outcome: 'WHISPARR_ENTRY_CLEANED',
+    });
+    expect(f.native.deleteSceneEntry).toHaveBeenCalledTimes(1);
+    expect(f.row.activeActionId).toBeNull();
+  });
+  it('requires complete absence evidence, not just a single 404', async () => {
+    const f = setup();
+    const preview = await f.entryService.preview(id);
+    f.native.deleteSceneEntry.mockResolvedValue(undefined);
+    f.native.sceneById.mockResolvedValue(null);
+    await expect(f.entryService.remove(id, dto(preview))).rejects.toThrow(
+      'may have reached',
+    );
+    expect(f.row.dismissedAt).toBeUndefined();
+  });
 });

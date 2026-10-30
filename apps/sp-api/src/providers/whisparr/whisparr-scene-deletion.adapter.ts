@@ -254,12 +254,25 @@ export class WhisparrSceneDeletionAdapter {
     id: number,
     config: WhisparrAdapterBaseConfig,
   ): Promise<void> {
+    return this.deleteScene(id, config, true);
+  }
+  async deleteSceneEntry(
+    id: number,
+    config: WhisparrAdapterBaseConfig,
+  ): Promise<void> {
+    return this.deleteScene(id, config, false);
+  }
+  private async deleteScene(
+    id: number,
+    config: WhisparrAdapterBaseConfig,
+    deleteFiles: boolean,
+  ): Promise<void> {
     if (!this.positive(id))
       throw new BadGatewayException('Invalid Whisparr scene ID.');
     const url = this.endpoint(config, 'movie/' + id);
-    url.searchParams.set('deleteFiles', 'true');
+    url.searchParams.set('deleteFiles', String(deleteFiles));
     url.searchParams.set('addImportExclusion', 'false');
-    // This is the only destructive transport in the feature. Never retry it here.
+    // Explicit true/false modes share one transport. Never retry native deletion here.
     try {
       const response = await fetchWithTimeout(url, {
         method: 'DELETE',

@@ -20,6 +20,23 @@ describe('native Whisparr deletion transport', () => {
     expect(options.redirect).toBe('error');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+  it('explicitly disables file deletion when removing an entry only', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await adapter.deleteSceneEntry(42, config);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url.pathname).toBe('/prefix/api/v3/movie/42');
+    expect(url.searchParams.get('deleteFiles')).toBe('false');
+    expect(url.searchParams.get('addImportExclusion')).toBe('false');
+    expect(options.method).toBe('DELETE');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('does not retry entry-only deletion after an uncertain response', async () => {
+    fetchMock.mockRejectedValue(new Error('timeout'));
+    await expect(adapter.deleteSceneEntry(42, config)).rejects.toThrow(
+      'did not confirm',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('never retries an uncertain response', async () => {
     fetchMock.mockRejectedValue(new Error('timeout'));
     await expect(adapter.deleteSceneAndFiles(42, config)).rejects.toThrow(

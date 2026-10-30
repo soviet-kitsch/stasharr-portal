@@ -1,3 +1,4 @@
+import { RequestEntryDeletionService } from './request-entry-deletion.service';
 import { Module } from '@nestjs/common';
 import { IndexingModule } from '../indexing/indexing.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
@@ -22,6 +23,7 @@ import { StashModule } from '../providers/stash/stash.module';
     RequestsService,
     RequestOperationsService,
     RequestDeletionService,
+    RequestEntryDeletionService,
   ],
   exports: [RequestOperationsService],
 })

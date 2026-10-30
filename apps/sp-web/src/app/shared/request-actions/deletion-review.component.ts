@@ -14,6 +14,7 @@ export interface DeletionReviewItem {
   status?: string;
   message?: string;
   canCheckOutcome?: boolean;
+  entryTarget?: { id: number; title: string; url: string } | null;
   target?: {
     whisparrSceneId: number;
     title: string;
@@ -135,6 +136,12 @@ export interface DeletionReviewItem {
                 Item History
               </button>
             }
+            @if (item.entryTarget; as target) {
+              <a class="meta" [href]="target.url" target="_blank" rel="noopener noreferrer"
+                >Whisparr #{{ target.id }} · {{ target.title }}</a
+              >
+              <p class="meta">Remove entry; keep all media files.</p>
+            }
             @if (item.target; as target) {
               <p class="meta">Whisparr #{{ target.whisparrSceneId }} · {{ target.title }}</p>
               <p><strong>Entire scene folder:</strong> {{ target.folder }}</p>
@@ -185,6 +192,21 @@ export interface DeletionReviewItem {
             <strong>Blocked or uncertain:</strong> Skip unverified matches. Stop on a failed or
             unknown deletion; check Item History before retrying. No automatic resend.
           </p>
+        } @else if (deleteEntries) {
+          <p>
+            <strong>Whisparr:</strong> Delete the exact reviewed entries when present. No import
+            exclusion is added. Entries with active transfers, ambiguous matches or failed checks
+            are kept.
+          </p>
+          <p>
+            <strong>Stash & files:</strong> Keep Stash records, media files, folders and
+            download-client jobs. Whisparr file deletion is disabled.
+          </p>
+          <p>
+            <strong>Recovery:</strong> A removed Whisparr entry must be added again if wanted later.
+            Restoring a Portal request alone does not restore it. Uncertain results stop further
+            cleanup; check Item History before retrying.
+          </p>
         } @else {
           <p>
             <strong>Whisparr & Stash:</strong> Whisparr entries, downloads and media files remain
@@ -219,5 +241,6 @@ export class DeletionReviewComponent implements OnChanges {
   }
   @Input() items: DeletionReviewItem[] = [];
   @Input() deleteFiles = false;
+  @Input() deleteEntries = false;
   @Output() inspect = new EventEmitter<string>();
 }

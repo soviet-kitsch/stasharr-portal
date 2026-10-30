@@ -13,6 +13,7 @@ export type RequestActionKind =
   | 'RE_REQUEST'
   | 'SEARCH'
   | 'DIAGNOSTIC_SEARCH'
+  | 'DELETE_WHISPARR_ENTRY'
   | 'DELETE_WHISPARR'
   | 'DISMISS'
   | 'RESTORE';

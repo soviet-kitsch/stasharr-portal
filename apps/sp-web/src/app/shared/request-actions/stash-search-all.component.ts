@@ -21,6 +21,20 @@ interface Entry {
   removed?: boolean;
   deletionProblem?: string;
 }
+interface EntryDeletionPreview {
+  sceneId: string;
+  whisparrSceneId: number | null;
+  title: string | null;
+  whisparrUrl: string | null;
+  filesKept: true;
+  previewToken: string;
+  expiresAt: string;
+}
+interface DeletionTarget extends Entry {
+  operationKey: string;
+  preview?: EntryDeletionPreview;
+  previewProblem?: string;
+}
 interface Snapshot {
   items: { id: string; title: string }[];
   total: number;
@@ -79,7 +93,7 @@ interface Snapshot {
     </button>
     <p-dialog
       [header]="
-        deletionReviewOpen() ? 'Delete found requests from Portal?' : 'Search Stash for all'
+        deletionReviewOpen() ? 'Delete requests and Whisparr entries?' : 'Search Stash for all'
       "
       styleClass="app-review-dialog app-stash-results-dialog"
       [visible]="open()"
@@ -94,10 +108,17 @@ interface Snapshot {
       <div class="dialog-body">
         @if (deletionReviewOpen()) {
           <p>
-            Remove these requests from Portal's active queue. Stash scenes, Whisparr entries,
-            downloads and files are kept. History remains available.
+            Remove these requests from Portal and delete their exact Whisparr entries when present.
+            Stash scenes, downloads and media files are kept. History remains available.
           </p>
-          <app-deletion-review [items]="deletionItems()" [deleteFiles]="false" />
+          <app-deletion-review
+            [items]="deletionItems()"
+            [deleteFiles]="false"
+            [deleteEntries]="true"
+          />
+          @if (previewLoading()) {
+            <p role="status">Checking Whisparr entries…</p>
+          }
           @if (deletionError()) {
             <p role="alert">{{ deletionError() }}</p>
           }
@@ -109,16 +130,16 @@ interface Snapshot {
               <button
                 class="app-baseline-button"
                 type="button"
-                [disabled]="deleting()"
+                [disabled]="deleting() || previewLoading() || !readyTargets().length"
                 (click)="deleteConfirmed()"
               >
                 {{
                   deletionError()
                     ? 'Retry reviewed deletion'
                     : 'Delete ' +
-                      deletionTargets().length +
-                      (deletionTargets().length === 1 ? ' request' : ' requests') +
-                      ' from Portal'
+                      readyTargets().length +
+                      (readyTargets().length === 1 ? ' request' : ' requests') +
+                      ' and Whisparr entries'
                 }}
               </button>
             }
@@ -126,7 +147,7 @@ interface Snapshot {
               class="app-baseline-button"
               type="button"
               [disabled]="deleting()"
-              (click)="deletionReviewOpen.set(false)"
+              (click)="cancelReview()"
             >
               {{ deletionComplete() ? 'Back to results' : 'Cancel' }}
             </button>
@@ -137,8 +158,8 @@ interface Snapshot {
             this check.
           </p>
           <small
-            >Checks only read existing Stash records. Deleting found requests requires confirmation
-            and keeps media files.</small
+            >Checks only read existing Stash records. Deleting found requests also removes exact
+            Whisparr entries, requires confirmation and keeps media files.</small
           >
           @if (collecting()) {
             <p role="status">Gathering tracked scenes…</p>
@@ -251,12 +272,13 @@ interface Snapshot {
 })
 export class StashSearchAllComponent implements OnDestroy {
   @Output() changed = new EventEmitter<void>();
-  protected readonly deletionTargets = signal<Entry[]>([]);
+  protected readonly deletionTargets = signal<DeletionTarget[]>([]);
+  protected readonly previewLoading = signal(false);
+  protected readonly readyTargets = computed(() => this.deletionTargets().filter((t) => t.preview));
   protected readonly deletionReviewOpen = signal(false);
   protected readonly deleting = signal(false);
   protected readonly deletionComplete = signal(false);
   protected readonly deletionError = signal<string | null>(null);
-  private deletionKey = '';
   private destroyed = false;
   protected readonly deletionPending = computed(
     () =>
@@ -275,8 +297,23 @@ export class StashSearchAllComponent implements OnDestroy {
       return {
         id: target.id,
         title: target.title,
-        status: current?.removed ? 'Removed from Portal' : 'Found in Stash',
-        message: current?.deletionProblem,
+        status: current?.removed
+          ? 'Removed; files kept'
+          : target.previewProblem
+            ? 'Blocked'
+            : target.preview
+              ? target.preview.whisparrSceneId === null
+                ? 'No Whisparr entry; Portal only'
+                : 'Whisparr entry will be removed'
+              : 'Checking Whisparr…',
+        message: current?.deletionProblem ?? target.previewProblem,
+        entryTarget: target.preview?.whisparrSceneId
+          ? {
+              id: target.preview.whisparrSceneId,
+              title: target.preview.title ?? '',
+              url: target.preview.whisparrUrl!,
+            }
+          : null,
       };
     }),
   );
@@ -311,7 +348,7 @@ export class StashSearchAllComponent implements OnDestroy {
   private readonly cancel = new Subject<void>();
   private generation = 0;
   async show() {
-    if (this.running() || this.deleting()) return;
+    if (this.running() || this.deleting() || this.previewLoading()) return;
     if (this.deletionPending()) {
       this.open.set(true);
       this.deletionReviewOpen.set(true);
@@ -412,80 +449,112 @@ export class StashSearchAllComponent implements OnDestroy {
       }
     }
   }
-  protected reviewDeletion(entries: Entry[]) {
-    if (this.running() || this.deleting()) return;
+  protected async reviewDeletion(entries: Entry[]) {
+    if (this.running() || this.deleting() || this.previewLoading()) return;
     if (this.deletionPending()) {
       this.deletionReviewOpen.set(true);
       return;
     }
     const ids = new Set(this.removable().map((e) => e.id));
-    const targets = entries.filter((e) => ids.has(e.id));
+    const targets: DeletionTarget[] = entries
+      .filter((e) => ids.has(e.id))
+      .map((e) => ({ ...e, operationKey: newOperationKey() }));
     if (!targets.length) return;
-    this.deletionTargets.set(targets.map((e) => ({ ...e })));
-    this.deletionKey = newOperationKey();
+    this.deletionTargets.set(targets);
     this.deletionComplete.set(false);
     this.deletionError.set(null);
     this.deletionReviewOpen.set(true);
+    this.previewLoading.set(true);
+    const generation = ++this.generation;
+    try {
+      for (const target of targets) {
+        if (this.destroyed || generation !== this.generation) return;
+        try {
+          const preview = await firstValueFrom(
+            this.http
+              .get<EntryDeletionPreview>(
+                `/api/requests/${encodeURIComponent(target.id)}/whisparr-entry-deletion-preview`,
+              )
+              .pipe(takeUntil(this.cancel)),
+          );
+          if (
+            preview.sceneId !== target.id ||
+            preview.filesKept !== true ||
+            !preview.previewToken ||
+            !Number.isFinite(Date.parse(preview.expiresAt)) ||
+            Date.parse(preview.expiresAt) <= Date.now() ||
+            !(
+              preview.whisparrSceneId === null ||
+              (Number.isSafeInteger(preview.whisparrSceneId) &&
+                preview.whisparrSceneId > 0 &&
+                typeof preview.whisparrUrl === 'string' &&
+                !!preview.whisparrUrl)
+            )
+          )
+            throw new Error('Incomplete entry preview');
+          if (generation !== this.generation) return;
+          this.deletionTargets.update((rows) =>
+            rows.map((t) => (t.id === target.id ? { ...t, preview } : t)),
+          );
+        } catch (error: any) {
+          if (generation !== this.generation) return;
+          const message =
+            typeof error?.error?.message === 'string'
+              ? error.error.message
+              : 'Whisparr could not be verified. This request will be kept.';
+          this.deletionTargets.update((rows) =>
+            rows.map((t) => (t.id === target.id ? { ...t, previewProblem: message } : t)),
+          );
+        }
+      }
+    } finally {
+      if (generation === this.generation) this.previewLoading.set(false);
+    }
+  }
+  protected cancelReview() {
+    if (this.deleting()) return;
+    this.stop();
+    this.deletionReviewOpen.set(false);
   }
   protected async deleteConfirmed() {
     if (
       this.deleting() ||
       this.running() ||
+      this.previewLoading() ||
       this.deletionComplete() ||
-      !this.deletionTargets().length ||
+      !this.readyTargets().length ||
       !this.deletionReviewOpen()
     )
       return;
     this.deleting.set(true);
     this.deletionError.set(null);
-    const ids = this.deletionTargets().map((e) => e.id);
     try {
-      for (let offset = 0; offset < ids.length; offset += 20) {
+      for (const target of this.readyTargets()) {
         if (this.destroyed) return;
-        const group = ids.slice(offset, offset + 20);
-        const response = await firstValueFrom(
+        const result = await firstValueFrom(
           this.http
             .post<{
-              results: {
-                id: string;
-                ok: boolean;
-                result?: { outcome?: string };
-                message?: string;
-              }[];
-            }>('/api/requests/batch/execute', {
-              kind: 'DISMISS',
-              ids: group,
-              operationKey: this.deletionKey,
+              outcome: string;
+              whisparrSceneId: number | null;
+              filesKept: boolean;
+            }>(`/api/requests/${encodeURIComponent(target.id)}/delete-whisparr-entry`, {
+              operationKey: target.operationKey,
+              previewToken: target.preview!.previewToken,
+              confirmDeleteEntry: true,
             })
             .pipe(takeUntil(this.cancel)),
         );
         if (this.destroyed) return;
         if (
-          !Array.isArray(response.results) ||
-          response.results.length !== group.length ||
-          new Set(response.results.map((r) => r.id)).size !== group.length ||
-          response.results.some(
-            (r) =>
-              !group.includes(r.id) ||
-              typeof r.ok !== 'boolean' ||
-              (r.ok && r.result?.outcome !== 'DISMISSED'),
-          )
+          result.outcome !== 'WHISPARR_ENTRY_CLEANED' ||
+          result.filesKept !== true ||
+          result.whisparrSceneId !== target.preview!.whisparrSceneId
         )
           throw new Error('Incomplete deletion result');
-        const results = new Map(response.results.map((r) => [r.id, r]));
         this.entries.update((rows) =>
-          rows.map((e) => {
-            const result = results.get(e.id);
-            return result
-              ? {
-                  ...e,
-                  removed: result.ok || e.removed,
-                  deletionProblem: result.ok
-                    ? undefined
-                    : (result.message ?? 'Deletion could not be confirmed.'),
-                }
-              : e;
-          }),
+          rows.map((e) =>
+            e.id === target.id ? { ...e, removed: true, deletionProblem: undefined } : e,
+          ),
         );
       }
       this.deletionComplete.set(true);
@@ -520,6 +589,7 @@ export class StashSearchAllComponent implements OnDestroy {
     this.cancel.next();
     this.running.set(false);
     this.collecting.set(false);
+    this.previewLoading.set(false);
   }
   protected close() {
     if (this.deleting()) return;

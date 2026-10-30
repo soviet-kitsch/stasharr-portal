@@ -1,3 +1,5 @@
+import { RequestEntryDeletionService } from './request-entry-deletion.service';
+import { DeleteWhisparrEntryDto } from './dto/delete-whisparr-entry.dto';
 import {
   Body,
   Controller,
@@ -24,6 +26,7 @@ export class RequestsController {
   constructor(
     private readonly requestsService: RequestsService,
     private readonly deletions: RequestDeletionService,
+    private readonly entryDeletions: RequestEntryDeletionService,
   ) {}
 
   @Post('batch/preview')
@@ -44,9 +47,24 @@ export class RequestsController {
   @Post(':stashId/outcome')
   async outcome(@Param('stashId') id: string) {
     return (
+      (await this.entryDeletions.recoverIfNeeded(id)) ??
       (await this.deletions.recoverIfNeeded(id)) ??
       this.requestsService.checkOutcome(id)
     );
+  }
+
+  @Get(':stashId/whisparr-entry-deletion-preview')
+  @Header('Cache-Control', 'no-store')
+  entryDeletionPreview(@Param('stashId') id: string) {
+    return this.entryDeletions.preview(id);
+  }
+
+  @Post(':stashId/delete-whisparr-entry')
+  deleteWhisparrEntry(
+    @Param('stashId') id: string,
+    @Body() dto: DeleteWhisparrEntryDto,
+  ) {
+    return this.entryDeletions.remove(id, dto);
   }
 
   @Get(':stashId/whisparr-deletion-preview')
