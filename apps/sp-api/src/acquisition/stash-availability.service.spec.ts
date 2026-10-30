@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { StashAvailabilityService } from './stash-availability.service';
 const id = '01a0d367-a37a-779d-9d6c-3c634b17f211';
 function setup() {
@@ -94,6 +95,12 @@ describe('on-demand Stash availability', () => {
       expect(f.stash.findScenesByStashId).not.toHaveBeenCalled();
     },
   );
+  it('treats a missing integration record as setup needed, without calling providers', async () => {
+    const f = setup();
+    f.integrations.findOne.mockRejectedValue(new NotFoundException());
+    expect((await f.service.check(id)).state).toBe('NOT_CONFIGURED');
+    expect(f.stash.findScenesByStashId).not.toHaveBeenCalled();
+  });
   it('rejects invalid scene IDs before any provider call', async () => {
     const f = setup();
     await expect(f.service.check('../invalid')).rejects.toThrow();

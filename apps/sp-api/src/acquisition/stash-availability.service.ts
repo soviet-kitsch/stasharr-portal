@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { StashAdapter } from '../providers/stash/stash.adapter';
@@ -81,7 +85,12 @@ export class StashAvailabilityService {
         })),
         libraryUrl,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof NotFoundException)
+        return result(
+          'NOT_CONFIGURED',
+          'Connect Stash to check current availability.',
+        );
       return result(
         'UNAVAILABLE',
         'The current Stash match lookup could not be completed. Availability is unknown; this does not mean the scene is missing.',

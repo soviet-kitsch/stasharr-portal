@@ -196,8 +196,10 @@ try {
     const stashUrl = `http://127.0.0.1:${emptyStash.address().port}`;
     for (const type of ["STASH", "STASHDB"])
       await database.query(
-        `UPDATE "IntegrationConfig" SET "baseUrl"=$2,enabled=$3,status='CONFIGURED',"lastHealthyAt"=NOW(),"updatedAt"=NOW() WHERE type=$1`,
-        [type, stashUrl, type === "STASH"],
+        `INSERT INTO "IntegrationConfig" (id,type,"baseUrl",enabled,status,"lastHealthyAt","updatedAt")
+      VALUES ($1,$2,$3,$4,'CONFIGURED',NOW(),NOW())
+      ON CONFLICT (type) DO UPDATE SET "baseUrl"=EXCLUDED."baseUrl",enabled=EXCLUDED.enabled,status='CONFIGURED',"lastHealthyAt"=NOW(),"updatedAt"=NOW()`,
+        [randomUUID(), type, stashUrl, type === "STASH"],
       );
     const beforeActions = (
       await database.query(
