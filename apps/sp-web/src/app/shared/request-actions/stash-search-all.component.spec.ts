@@ -342,6 +342,32 @@ describe('top-level Search Stash for all', () => {
     expect(c.deletionPending()).toBe(false);
     expect(c.entries().every((e: any) => e.removed)).toBe(true);
   });
+  it('allows a fresh reviewed attempt after the server confirms failure before dispatch', async () => {
+    const { c } = setup();
+    c.entries.set([0, 1].map((i) => ({ ...scene(i), result: value() })));
+    await reviewed(c);
+    const run = c.deleteConfirmed();
+    const req = http.expectOne('/api/requests/scene-0/delete-whisparr-entry');
+    const oldKey = req.request.body.operationKey;
+    req.flush(
+      { actionState: 'FAILED', message: 'The preview expired.' },
+      { status: 409, statusText: 'Not sent' },
+    );
+    await run;
+    expect(c.deletionPending()).toBe(false);
+    expect(c.deletionComplete()).toBe(true);
+    expect(c.entries()[0].deletionProblem).toContain('expired');
+    http.expectNone('/api/requests/scene-1/delete-whisparr-entry');
+    c.cancelReview();
+    await reviewed(c);
+    const next = c.deleteConfirmed();
+    const retry = http.expectOne('/api/requests/scene-0/delete-whisparr-entry');
+    expect(retry.request.body.operationKey).not.toBe(oldKey);
+    retry.flush(removed());
+    await tick();
+    http.expectOne('/api/requests/scene-1/delete-whisparr-entry').flush(removed());
+    await next;
+  });
   it('does not mislabel a malformed or wrong-scene success as confirmed removal', async () => {
     const { c } = setup();
     c.entries.set([{ ...scene(1), result: value() }]);

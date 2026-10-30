@@ -528,9 +528,11 @@ export class StashSearchAllComponent implements OnDestroy {
       return;
     this.deleting.set(true);
     this.deletionError.set(null);
+    let activeId: string | undefined;
     try {
       for (const target of this.readyTargets()) {
         if (this.destroyed) return;
+        activeId = target.id;
         const result = await firstValueFrom(
           this.http
             .post<{
@@ -558,11 +560,25 @@ export class StashSearchAllComponent implements OnDestroy {
         );
       }
       this.deletionComplete.set(true);
-    } catch {
-      if (!this.destroyed)
-        this.deletionError.set(
-          'The result could not be confirmed. Retry this same reviewed deletion to recover recorded results, or check Item History. No retry runs automatically.',
-        );
+    } catch (error: any) {
+      if (!this.destroyed) {
+        if (error?.error?.actionState === 'FAILED') {
+          const message =
+            typeof error.error.message === 'string'
+              ? error.error.message
+              : 'This deletion was not sent.';
+          this.entries.update((rows) =>
+            rows.map((e) => (e.id === activeId ? { ...e, deletionProblem: message } : e)),
+          );
+          this.deletionComplete.set(true);
+          this.deletionError.set(
+            message + ' Remaining requests were kept. Return to results and start a fresh review.',
+          );
+        } else
+          this.deletionError.set(
+            'The result could not be confirmed. Retry this same reviewed deletion to recover recorded results, or check Item History. No retry runs automatically.',
+          );
+      }
     } finally {
       if (!this.destroyed) {
         this.deleting.set(false);
