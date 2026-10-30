@@ -8,6 +8,7 @@ import {
   QueryList,
   afterNextRender,
   computed,
+  effect,
   signal,
 } from '@angular/core';
 import { Menu } from 'primeng/menu';
@@ -72,7 +73,19 @@ export class ResponsiveActionsComponent implements OnDestroy {
   @ViewChild('overflow') private overflow?: Menu;
   @ViewChildren(Tooltip) private tooltips?: QueryList<Tooltip>;
   private observer?: ResizeObserver;
+  private overflowSignature = '';
+  private lastWidth = 0;
+  private lastSize = 0;
   constructor() {
+    effect(() => {
+      const signature = this.hidden()
+        .map((action) => action.key)
+        .join('|');
+      if (signature !== this.overflowSignature) {
+        this.overflow?.hide();
+        this.overflowSignature = signature;
+      }
+    });
     afterNextRender(() => {
       if (typeof ResizeObserver !== 'undefined') {
         this.observer = new ResizeObserver(() => this.measure());
@@ -87,6 +100,9 @@ export class ResponsiveActionsComponent implements OnDestroy {
     const width = element.getBoundingClientRect().width;
     const size = this.probe.nativeElement.getBoundingClientRect().width;
     if (!width || !size) return;
+    if (width !== this.lastWidth || size !== this.lastSize) this.overflow?.hide();
+    this.lastWidth = width;
+    this.lastSize = size;
     const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
     const count = Math.max(1, Math.floor((width + gap + 0.1) / (size + gap)));
     if (count !== this.slots()) {

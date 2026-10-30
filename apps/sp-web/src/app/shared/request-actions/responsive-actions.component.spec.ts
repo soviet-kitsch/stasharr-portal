@@ -52,6 +52,21 @@ describe('responsive action placement', () => {
     expect(fixture.nativeElement.querySelector('[aria-label="More request actions"]')).toBeNull();
     fixture.destroy();
   });
+  it('closes an open menu when the row action set changes and everything now fits', async () => {
+    const { fixture, component } = setup();
+    component.slots.set(4);
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[aria-label="More request actions"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.overflow.visible).toBe(true);
+    fixture.componentRef.setInput('actions', actions(3));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.overflow.visible).toBe(false);
+    expect(fixture.nativeElement.querySelector('[aria-label="More request actions"]')).toBeNull();
+    fixture.destroy();
+  });
   it('dispatches the same action from inline and overflow without duplicating it', () => {
     const { fixture, component, items } = setup(actions(2));
     component.slots.set(2);
