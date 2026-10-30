@@ -51,7 +51,7 @@ interface DeletionPreview {
   template: `
     <p-dialog
       styleClass="app-review-dialog"
-      header="Delete request from Portal?"
+      [header]="deleteFiles() ? 'Delete request, scene & files?' : 'Delete request from Portal?'"
       [visible]="open"
       (visibleChange)="close()"
       (onHide)="afterHide()"
