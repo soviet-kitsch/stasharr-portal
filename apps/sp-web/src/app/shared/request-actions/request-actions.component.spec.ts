@@ -43,6 +43,18 @@ describe('request action controls', () => {
         .join(' ')
     );
   }
+  async function overflowAction(fixture: any, label: string) {
+    fixture.nativeElement.querySelector('[aria-label="More request actions"]').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const link = Array.from(
+      document.querySelectorAll<HTMLElement>('.app-request-overflow .p-menu-item-link'),
+    ).find((item) => item.textContent?.trim() === label);
+    if (!link) throw new Error('Missing menu action: ' + label);
+    link.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
   const diagnostics = {
     summary: null,
     events: [],
@@ -64,7 +76,7 @@ describe('request action controls', () => {
 
   it('requires confirmation before deleting and describes the limited scope', async () => {
     const fixture = single();
-    button(fixture, 'Delete request').click();
+    await overflowAction(fixture, 'Delete request');
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectNone((request) => request.method === 'POST');
@@ -86,7 +98,7 @@ describe('request action controls', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const menu = document.querySelector('.app-request-overflow')!;
-    expect(menu.textContent).toContain('Request history');
+    expect(menu.textContent).toContain('Item History');
     const remove = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
       (item) => item.textContent?.includes('Delete request'),
     )!;
@@ -95,6 +107,40 @@ describe('request action controls', () => {
     await fixture.whenStable();
     expect(renderedText(fixture)).toContain('downloads and media files remain unchanged');
     http.expectNone((r) => r.method === 'POST');
+    fixture.destroy();
+  });
+  it('has exactly one Item History entry and opens one combined dialog without a row trigger', async () => {
+    const fixture = single();
+    fixture.componentRef.setInput('compact', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-request-diagnostics button')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Request details');
+    http.expectNone(() => true);
+    await overflowAction(fixture, 'Item History');
+    http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
+    http
+      .expectOne('/api/requests/scene-1/history')
+      .flush({
+        dismissed: false,
+        activeActionId: null,
+        actions: [
+          {
+            id: 'a',
+            kind: 'RE_REQUEST',
+            state: 'SUCCEEDED',
+            createdAt: '2026-10-30',
+            result: { message: 'Existing acquisition reused.' },
+          },
+        ],
+      });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Item History');
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Existing acquisition reused.',
+    );
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Search decisions');
     fixture.destroy();
   });
   it('prevents repeated search clicks while the first action is in flight', () => {
@@ -349,7 +395,7 @@ describe('request action controls', () => {
 
   it('shows the concrete resume outcome in retained request history', async () => {
     const fixture = single();
-    button(fixture, 'Request details').click();
+    await overflowAction(fixture, 'Item History');
     http.expectOne('/api/requests/scene-1/diagnostics').flush(diagnostics);
     http.expectOne('/api/requests/scene-1/history').flush({
       dismissed: false,

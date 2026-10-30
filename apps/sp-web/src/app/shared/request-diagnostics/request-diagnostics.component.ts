@@ -72,6 +72,7 @@ interface Activity {
 
 @Component({
   selector: 'app-request-diagnostics',
+  host: { '[class.triggerless]': '!showTrigger' },
   imports: [Dialog, DatePipe, HydraSearchComponent],
   templateUrl: './request-diagnostics.component.html',
   styleUrl: './request-diagnostics.component.scss',
@@ -80,6 +81,7 @@ export class RequestDiagnosticsComponent implements OnDestroy {
   @Input({ required: true }) sceneId = '';
   @Input() sceneTitle = '';
   @Input() compact = false;
+  @Input() showTrigger = true;
   @Output() changed = new EventEmitter<void>();
   private readonly http = inject(HttpClient);
   protected readonly open = signal(false);
@@ -125,10 +127,6 @@ export class RequestDiagnosticsComponent implements OnDestroy {
       this.generation++;
       clearInterval(this.timer);
     }
-  }
-  showActivity() {
-    this.show();
-    this.allActivity.set(true);
   }
   private path() {
     return '/api/requests/' + encodeURIComponent(this.sceneId);

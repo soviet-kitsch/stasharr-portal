@@ -1,19 +1,21 @@
-<button
-  class="app-baseline-button small"
-  [class.app-icon-button]="compact"
-  [attr.aria-label]="compact ? 'Request details' : null"
-  [attr.title]="compact ? 'Request details' : null"
-  type="button"
-  (click)="show()"
->
-  @if (compact) {
-    <i class="pi pi-info-circle" aria-hidden="true"></i>
-  } @else {
-    Request details
-  }
-</button>
+@if (showTrigger) {
+  <button
+    class="app-baseline-button small"
+    [class.app-icon-button]="compact"
+    [attr.aria-label]="compact ? 'Item History' : null"
+    [attr.title]="compact ? 'Item History' : null"
+    type="button"
+    (click)="show()"
+  >
+    @if (compact) {
+      <i class="pi pi-info-circle" aria-hidden="true"></i>
+    } @else {
+      Item History
+    }
+  </button>
+}
 <p-dialog
-  header="Request details"
+  header="Item History"
   styleClass="app-review-dialog"
   [visible]="open()"
   (visibleChange)="visibility($event)"
@@ -267,7 +269,7 @@
     }
     <div class="dialog-footer">
       <button class="app-baseline-button" type="button" (click)="visibility(false)">
-        Close details
+        Close history
       </button>
     </div>
   </div>

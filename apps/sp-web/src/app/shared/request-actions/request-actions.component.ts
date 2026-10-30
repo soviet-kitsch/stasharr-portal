@@ -14,12 +14,6 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
   styleUrl: './request-actions.component.scss',
   template: `
     <div class="app-action-row request-actions" [class.compact]="compact">
-      <app-request-diagnostics
-        [sceneId]="sceneId"
-        [sceneTitle]="sceneTitle"
-        [compact]="compact"
-        (changed)="changed.emit()"
-      />
       @if (tracked) {
         <button
           class="app-baseline-button secondary-action small"
@@ -31,7 +25,7 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
           (click)="requestOpen.set(true)"
         >
           @if (compact) {
-            <i class="pi pi-send" aria-hidden="true"></i>
+            <i class="pi pi-cloud-download" aria-hidden="true"></i>
           } @else {
             Re-request
           }
@@ -72,37 +66,30 @@ import { SceneRequestModalComponent } from '../scene-request-modal/scene-request
           }
         </a>
       }
-      @if (compact) {
-        <button
-          class="app-baseline-button app-icon-button"
-          type="button"
-          aria-label="More request actions"
-          title="More request actions"
-          [disabled]="busy()"
-          (click)="overflow.toggle($event)"
-        >
-          <i class="pi pi-ellipsis-v" aria-hidden="true"></i>
-        </button>
-        <p-menu
-          #overflow
-          [model]="overflowItems"
-          [popup]="true"
-          appendTo="body"
-          styleClass="app-request-overflow"
-        />
-      } @else {
-        @if (tracked) {
-          <button
-            class="app-baseline-button secondary-action small"
-            type="button"
-            [disabled]="busy()"
-            (click)="deleteOpen.set(true)"
-          >
-            Delete request
-          </button>
-        }
-      }
+      <button
+        class="app-baseline-button app-icon-button"
+        type="button"
+        aria-label="More request actions"
+        title="More request actions"
+        [disabled]="busy()"
+        (click)="overflow.toggle($event)"
+      >
+        <i class="pi pi-ellipsis-v" aria-hidden="true"></i>
+      </button>
+      <p-menu
+        #overflow
+        [model]="overflowItems"
+        [popup]="true"
+        appendTo="body"
+        styleClass="app-request-overflow"
+      />
     </div>
+    <app-request-diagnostics
+      [sceneId]="sceneId"
+      [sceneTitle]="sceneTitle"
+      [showTrigger]="false"
+      (changed)="changed.emit()"
+    />
     @if (message()) {
       <p role="status">{{ message() }}</p>
     }
@@ -164,9 +151,9 @@ export class RequestActionsComponent {
   protected get overflowItems(): MenuItem[] {
     return [
       {
-        label: 'Request history',
+        label: 'Item History',
         icon: 'pi pi-history',
-        command: () => this.details.showActivity(),
+        command: () => this.details.show(),
       },
       ...(this.tracked
         ? [
@@ -224,7 +211,7 @@ export class RequestActionsComponent {
           this.message.set(
             typeof error.error?.message === 'string'
               ? error.error.message
-              : 'The result is unknown. Open Request details and check the outcome before retrying.',
+              : 'The result is unknown. Open Item History and check the outcome before retrying.',
           );
           this.details.show();
         },

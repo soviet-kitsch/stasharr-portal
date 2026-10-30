@@ -23,13 +23,3 @@ p {
   flex-wrap: nowrap;
   margin: 0;
 }
-
-@media (max-width: 380px) {
-  .request-actions.compact {
-    display: grid;
-    grid-template-columns: repeat(3, 2.75rem);
-  }
-  .request-actions.compact > p-menu {
-    display: contents;
-  }
-}

@@ -111,3 +111,7 @@ summary {
   display: block;
   margin-top: 0.15rem;
 }
+
+:host(.triggerless) {
+  display: contents;
+}

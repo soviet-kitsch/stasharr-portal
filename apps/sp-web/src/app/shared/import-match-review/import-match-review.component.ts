@@ -58,7 +58,7 @@ export interface ImportMatchReview {
       (click)="show()"
     >
       @if (compact) {
-        <span class="app-service-icon app-service-icon-stash" aria-hidden="true"></span>
+        <i class="pi pi-database" aria-hidden="true"></i>
       } @else {
         Review Stash match
       }
