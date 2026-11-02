@@ -93,6 +93,10 @@ export class ScenesQueryDto extends DiscoverQueryDto {
 
   @IsOptional()
   @IsIn(SCENE_TAG_MATCH_MODE_VALUES)
+  performerMode?: SceneTagMatchMode;
+
+  @IsOptional()
+  @IsIn(SCENE_TAG_MATCH_MODE_VALUES)
   tagMode?: SceneTagMatchMode;
 
   @IsOptional()

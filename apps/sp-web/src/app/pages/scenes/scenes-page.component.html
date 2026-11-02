@@ -50,7 +50,22 @@
           [selected]="selectedPerformers()"
           (selectionChange)="onPerformersChanged($event)"
         />
-        <small>Matches any selected performer.</small>
+        <p-select
+          inputId="scenes-performer-mode"
+          ariaLabel="Performer match mode"
+          [ngModel]="selectedPerformerMode()"
+          (ngModelChange)="onPerformerModeChanged($event)"
+          [options]="performerMatchOptions"
+          optionLabel="label"
+          optionValue="value"
+          [appendTo]="'body'"
+          panelStyleClass="app-overlay-panel"
+        />
+        <small>{{
+          selectedPerformerMode() === 'AND'
+            ? 'Scenes featuring every selected performer.'
+            : 'Scenes featuring any selected performer.'
+        }}</small>
       </label>
       <label class="control-field">
         <span>Studio Filter</span>

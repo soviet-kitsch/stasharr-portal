@@ -51,6 +51,7 @@ export class ScenesService {
     favorites?: SceneFavoritesFilter,
     studioIds: string[] = [],
     performerIds: string[] = [],
+    performerMode: SceneTagMatchMode = 'OR',
   ): Promise<ScenesFeedResponseDto> {
     const catalogProvider =
       await this.catalogProviderService.getConfiguredCatalogProvider();
@@ -66,7 +67,7 @@ export class ScenesService {
       favorites,
       studioIds: normalizedStudioIds,
       ...(performerIds.length
-        ? { performerIds: this.normalizeTagIds(performerIds) }
+        ? { performerIds: this.normalizeTagIds(performerIds), performerMode }
         : {}),
       tagFilter:
         normalizedTagIds.length > 0

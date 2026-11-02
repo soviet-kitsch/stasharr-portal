@@ -545,24 +545,29 @@ describe('ScenesService', () => {
       },
     );
   });
-  it('normalizes performers and combines them with studio criteria', async () => {
-    await service.getScenesFeed(
-      2,
-      24,
-      'DATE',
-      'DESC',
-      [],
-      'OR',
-      undefined,
-      ['studio-1'],
-      [' p-1 ', 'p-1', 'p-2'],
-    );
-    expect(stashdbAdapter.getScenesBySort).toHaveBeenCalledWith(
-      expect.objectContaining({
-        page: 2,
-        performerIds: ['p-1', 'p-2'],
-        studioIds: ['studio-1'],
-      }),
-    );
-  });
+  it.each(['AND', 'OR'] as const)(
+    'passes performer mode %s alongside studio criteria',
+    async (performerMode) => {
+      await service.getScenesFeed(
+        2,
+        24,
+        'DATE',
+        'DESC',
+        [],
+        'OR',
+        undefined,
+        ['studio-1'],
+        [' p-1 ', 'p-1', 'p-2'],
+        performerMode,
+      );
+      expect(stashdbAdapter.getScenesBySort).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page: 2,
+          performerIds: ['p-1', 'p-2'],
+          performerMode,
+          studioIds: ['studio-1'],
+        }),
+      );
+    },
+  );
 });

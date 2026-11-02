@@ -38,6 +38,7 @@ export interface StashdbAdapterSceneFeedConfig extends StashdbAdapterTrendingCon
   tagFilter?: StashdbSceneTagFilter;
   studioIds?: string[];
   performerIds?: string[];
+  performerMode?: 'AND' | 'OR';
 }
 
 export type StashdbSceneFeedFavorites = 'PERFORMER' | 'STUDIO' | 'ALL';
@@ -1333,8 +1334,12 @@ export class StashdbAdapter {
     const performerDeclaration = performerIds.length
       ? ', $performerIds: [ID!]!'
       : '';
+    const performerModifier =
+      'performerMode' in config && config.performerMode === 'AND'
+        ? 'INCLUDES_ALL'
+        : 'INCLUDES';
     const performerInput = performerIds.length
-      ? ', performers: { value: $performerIds, modifier: INCLUDES }'
+      ? `, performers: { value: $performerIds, modifier: ${performerModifier} }`
       : '';
     const tagModifier = tagFilter?.mode === 'AND' ? 'INCLUDES_ALL' : 'INCLUDES';
     const tagVariableDeclaration = tagFilter ? ', $tagIds: [ID!]!' : '';

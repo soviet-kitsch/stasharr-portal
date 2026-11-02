@@ -5,6 +5,19 @@ import { ScenesQueryDto } from './scenes-query.dto';
 import { PerformersQueryDto } from '../../performers/dto/performers-query.dto';
 
 describe('Discovery filter query validation', () => {
+  it('validates performer match modes independently of tag modes', async () => {
+    for (const performerMode of ['AND', 'OR', undefined])
+      expect(
+        await validate(
+          plainToInstance(ScenesQueryDto, { performerMode, tagMode: 'OR' }),
+        ),
+      ).toEqual([]);
+    for (const performerMode of ['any', 'X', ['AND']])
+      expect(
+        (await validate(plainToInstance(ScenesQueryDto, { performerMode })))
+          .length,
+      ).toBeGreaterThan(0);
+  });
   it('accepts comma and repeated performer values and trims them', async () => {
     const dto = plainToInstance(ScenesQueryDto, {
       performerIds: ['p-1, p-2', ' p-3 '],

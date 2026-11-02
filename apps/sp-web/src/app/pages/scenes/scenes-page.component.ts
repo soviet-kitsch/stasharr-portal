@@ -185,6 +185,11 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly selectedFavorites = signal<FavoritesFilterOption>(
     ScenesPageComponent.DEFAULT_FAVORITES,
   );
+  protected readonly selectedPerformerMode = signal<SceneTagMatchMode>('OR');
+  protected readonly performerMatchOptions = [
+    { label: 'Any performer (OR)', value: 'OR' },
+    { label: 'All performers (AND)', value: 'AND' },
+  ];
   protected readonly selectedPerformers = signal<PerformerSelection[]>([]);
   protected readonly tagSearchTerm = signal('');
   protected readonly selectedTagMode = signal<SceneTagMatchMode>(
@@ -337,6 +342,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedDirection() !== ScenesPageComponent.DEFAULT_DIRECTION ||
       this.selectedFavorites() !== ScenesPageComponent.DEFAULT_FAVORITES ||
       this.selectedTagMode() !== ScenesPageComponent.DEFAULT_TAG_MODE ||
+      this.selectedPerformerMode() !== 'OR' ||
       this.selectedTags().length > 0 ||
       this.selectedStudios().length > 0 ||
       this.selectedPerformers().length > 0
@@ -353,6 +359,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.selectedFavorites.set(ScenesPageComponent.DEFAULT_FAVORITES);
     this.selectedTagMode.set(ScenesPageComponent.DEFAULT_TAG_MODE);
     this.selectedPerformers.set([]);
+    this.selectedPerformerMode.set('OR');
     this.selectedTags.set([]);
     this.selectedTagIdsModel.set([]);
     this.tagSearchTerm.set('');
@@ -367,6 +374,13 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.studioSearchError.set(null);
     this.tagSearchTerms.next('');
     this.studioSearchTerms.next('');
+    this.syncUrlWithCurrentFilters(false);
+    this.resetFeedAndReload();
+  }
+
+  protected onPerformerModeChanged(mode: SceneTagMatchMode): void {
+    if (!['AND', 'OR'].includes(mode) || mode === this.selectedPerformerMode()) return;
+    this.selectedPerformerMode.set(mode);
     this.syncUrlWithCurrentFilters(false);
     this.resetFeedAndReload();
   }
@@ -578,6 +592,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
         this.selectedFavoritesFilter(),
         this.selectedStudioIds(),
         this.selectedPerformers().map((performer) => performer.id),
+        ...(this.selectedPerformerMode() === 'AND' ? ['AND' as const] : []),
       )
       .pipe(
         finalize(() => {
@@ -718,6 +733,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     studioIds: string[];
     studioNamesById: Map<string, string>;
     performers: PerformerSelection[];
+    performerMode: SceneTagMatchMode;
   } {
     const sortParam = queryParamMap.get('sort');
     const sort: SceneFeedSort =
@@ -809,6 +825,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       studioIds,
       studioNamesById,
       performers,
+      performerMode: queryParamMap.get('performerMode') === 'AND' ? 'AND' : 'OR',
     };
   }
 
@@ -822,6 +839,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     studioIds: string[];
     studioNamesById: Map<string, string>;
     performers: PerformerSelection[];
+    performerMode: SceneTagMatchMode;
   }): boolean {
     const currentSelectedIds = this.selectedTagIds();
     const currentSelectedStudioIds = this.selectedStudioIds();
@@ -832,6 +850,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedDirection() !== state.direction ||
       this.selectedFavorites() !== state.favorites ||
       this.selectedTagMode() !== state.mode ||
+      this.selectedPerformerMode() !== state.performerMode ||
       tagsChanged ||
       studiosChanged ||
       JSON.stringify(this.selectedPerformers()) !== JSON.stringify(state.performers);
@@ -841,6 +860,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     this.selectedPerformers.set(state.performers);
+    this.selectedPerformerMode.set(state.performerMode);
     this.selectedSort.set(state.sort);
     this.selectedDirection.set(state.direction);
     this.selectedFavorites.set(state.favorites);
@@ -885,6 +905,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private syncUrlWithCurrentFilters(replaceUrl: boolean): void {
     const next = {
+      performerMode: this.selectedPerformerMode() === 'AND' ? 'AND' : null,
       performers: this.selectedPerformers().length
         ? this.selectedPerformers()
             .map((p) => p.id)
@@ -942,6 +963,7 @@ export class ScenesPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const currentStudios = current.get('studios');
     const currentStudioNames = current.get('studioNames');
     if (
+      (current.get('performerMode') ?? null) === next.performerMode &&
       (current.get('performers') ?? null) === next.performers &&
       (current.get('performerNames') ?? null) === next.performerNames &&
       (currentSort ?? null) === next.sort &&

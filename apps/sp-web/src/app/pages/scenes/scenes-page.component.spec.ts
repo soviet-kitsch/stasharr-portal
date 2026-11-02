@@ -272,6 +272,7 @@ describe('ScenesPageComponent', () => {
     expect(navigateSpy).toHaveBeenCalledWith([], {
       relativeTo: expect.anything(),
       queryParams: {
+        performerMode: null,
         sort: null,
         dir: null,
         fav: null,
@@ -315,6 +316,7 @@ describe('ScenesPageComponent', () => {
     expect(navigateSpy).toHaveBeenCalledWith([], {
       relativeTo: expect.anything(),
       queryParams: {
+        performerMode: null,
         sort: null,
         dir: null,
         fav: null,
@@ -414,5 +416,27 @@ describe('ScenesPageComponent', () => {
     );
     expect(component.selectedPerformers()).toEqual([{ id: 'p-2', name: 'Back result' }]);
     expect(discoverService.getScenesFeed.mock.lastCall?.[8]).toEqual(['p-2']);
+  });
+  it('toggles performer AND/OR, resets pagination and persists it independently from tag mode', async () => {
+    const { fixture, discoverService, navigateSpy, queryParamMap$ } = await renderPage({
+      performers: 'p-1,p-2',
+      performerMode: 'AND',
+      mode: 'OR',
+    });
+    const c = fixture.componentInstance as any;
+    expect(c.selectedPerformerMode()).toBe('AND');
+    expect(discoverService.getScenesFeed.mock.lastCall?.[9]).toBe('AND');
+    c.onPerformerModeChanged('OR');
+    expect(discoverService.getScenesFeed.mock.lastCall?.[0]).toBe(1);
+    expect(discoverService.getScenesFeed.mock.lastCall?.[9]).toBeUndefined();
+    expect(navigateSpy.mock.lastCall?.[1]?.queryParams.performerMode).toBeNull();
+    queryParamMap$.next(convertToParamMap({ performers: 'p-1,p-2', performerMode: 'AND' }));
+    expect(c.selectedPerformerMode()).toBe('AND');
+    expect(discoverService.getScenesFeed.mock.lastCall?.[9]).toBe('AND');
+    c.resetFilters();
+    expect(c.selectedPerformerMode()).toBe('OR');
+    expect(c.selectedPerformers()).toEqual([]);
+    queryParamMap$.next(convertToParamMap({ performerMode: 'bad' }));
+    expect(c.selectedPerformerMode()).toBe('OR');
   });
 });

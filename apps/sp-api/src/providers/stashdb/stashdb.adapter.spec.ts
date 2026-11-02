@@ -1466,48 +1466,52 @@ describe('StashdbAdapter', () => {
       alreadyFavorited: false,
     });
   });
-  it('applies performer, studio and tag criteria together before provider pagination', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: {
-          queryScenes: {
-            count: 71,
-            scenes: [{ id: 'scene-49', title: 'Page three' }],
+  it.each(['AND', 'OR', undefined] as const)(
+    'applies performer mode %s before provider pagination, independently of tags',
+    async (performerMode) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: {
+            queryScenes: {
+              count: 71,
+              scenes: [{ id: 'scene-49', title: 'Page three' }],
+            },
           },
-        },
-      }),
-    });
-    const response = await adapter.getScenesBySort({
-      baseUrl: 'http://catalog/graphql',
-      page: 3,
-      perPage: 24,
-      sort: 'DATE',
-      direction: 'DESC',
-      performerIds: [' p-1 ', 'p-1', 'p-2'],
-      studioIds: ['studio-1'],
-      tagFilter: { tagIds: ['tag-1'], mode: 'AND' },
-    });
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.query).toContain(
-      'performers: { value: $performerIds, modifier: INCLUDES }',
-    );
-    expect(body.query).toContain(
-      'studios: { value: $studioIds, modifier: INCLUDES }',
-    );
-    expect(body.query).toContain(
-      'tags: { value: $tagIds, modifier: INCLUDES_ALL }',
-    );
-    expect(body.variables).toEqual({
-      page: 3,
-      perPage: 24,
-      performerIds: ['p-1', 'p-2'],
-      studioIds: ['studio-1'],
-      tagIds: ['tag-1'],
-    });
-    expect(response.total).toBe(71);
-    expect(response.scenes.map((s) => s.id)).toEqual(['scene-49']);
-  });
+        }),
+      });
+      const response = await adapter.getScenesBySort({
+        baseUrl: 'http://catalog/graphql',
+        page: 3,
+        perPage: 24,
+        sort: 'DATE',
+        direction: 'DESC',
+        performerIds: [' p-1 ', 'p-1', 'p-2'],
+        performerMode,
+        studioIds: ['studio-1'],
+        tagFilter: { tagIds: ['tag-1'], mode: 'AND' },
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.query).toContain(
+        `performers: { value: $performerIds, modifier: ${performerMode === 'AND' ? 'INCLUDES_ALL' : 'INCLUDES'} }`,
+      );
+      expect(body.query).toContain(
+        'studios: { value: $studioIds, modifier: INCLUDES }',
+      );
+      expect(body.query).toContain(
+        'tags: { value: $tagIds, modifier: INCLUDES_ALL }',
+      );
+      expect(body.variables).toEqual({
+        page: 3,
+        perPage: 24,
+        performerIds: ['p-1', 'p-2'],
+        studioIds: ['studio-1'],
+        tagIds: ['tag-1'],
+      });
+      expect(response.total).toBe(71);
+      expect(response.scenes.map((s) => s.id)).toEqual(['scene-49']);
+    },
+  );
 
   it('uses native studio membership with global popularity sorting and provider totals', async () => {
     fetchMock.mockResolvedValue({

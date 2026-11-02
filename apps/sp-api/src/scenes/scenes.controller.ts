@@ -25,6 +25,7 @@ export class ScenesController {
       query.favorites,
       query.studioIds,
       query.performerIds,
+      query.performerMode,
     );
   }
 
