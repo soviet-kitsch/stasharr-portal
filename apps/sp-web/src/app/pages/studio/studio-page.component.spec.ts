@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { DiscoverService } from '../../core/api/discover.service';
 import { DiscoverItem, StudioDetails } from '../../core/api/discover.types';
@@ -60,9 +60,9 @@ describe('StudioPageComponent', () => {
     TestBed.resetTestingModule();
   });
 
-  async function renderPage() {
+  async function renderPage(params: Record<string, string> = {}) {
     const paramMap$ = new BehaviorSubject(convertToParamMap({ studioId: 'studio-1' }));
-    const queryParamMap$ = new BehaviorSubject(convertToParamMap({}));
+    const queryParamMap$ = new BehaviorSubject(convertToParamMap(params));
     const discoverService = {
       getStudioDetails: vi.fn().mockReturnValue(of(buildStudio())),
       getScenesFeed: vi.fn().mockReturnValue(
@@ -74,6 +74,7 @@ describe('StudioPageComponent', () => {
           items: [buildScene()],
         }),
       ),
+      searchPerformers: vi.fn().mockReturnValue(of([])),
       searchSceneTags: vi.fn().mockReturnValue(of([])),
     };
 
@@ -88,6 +89,11 @@ describe('StudioPageComponent', () => {
         {
           provide: ActivatedRoute,
           useValue: {
+            snapshot: {
+              get queryParamMap() {
+                return queryParamMap$.value;
+              },
+            },
             paramMap: paramMap$.asObservable(),
             queryParamMap: queryParamMap$.asObservable(),
           },
@@ -103,12 +109,13 @@ describe('StudioPageComponent', () => {
       ],
     }).compileComponents();
 
+    const navigateSpy = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const fixture = TestBed.createComponent(StudioPageComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    return { fixture };
+    return { fixture, discoverService, navigateSpy, queryParamMap$, paramMap$ };
   }
 
   it('renders studio scenes with the shared scene card and keeps request handling on the page', async () => {
@@ -133,5 +140,73 @@ describe('StudioPageComponent', () => {
       title: 'Studio Scene',
       imageUrl: 'http://cdn.local/scene.jpg',
     });
+  });
+  it('combines URL performers and AND mode with the fixed studio and restores Back filters', async () => {
+    const { fixture, discoverService, queryParamMap$, paramMap$ } = await renderPage({
+      performers: 'p-1,p-1,p-2',
+      performerNames: '["Example, Alias","Duplicate","Second"]',
+      performerMode: 'AND',
+      mode: 'OR',
+    });
+    const c = fixture.componentInstance as any;
+    expect(c.selectedPerformers()).toEqual([
+      { id: 'p-1', name: 'Example, Alias' },
+      { id: 'p-2', name: 'Second' },
+    ]);
+    expect(discoverService.getScenesFeed).toHaveBeenLastCalledWith(
+      1,
+      24,
+      'DATE',
+      'DESC',
+      [],
+      'OR',
+      undefined,
+      ['studio-1'],
+      ['p-1', 'p-2'],
+      'AND',
+    );
+    queryParamMap$.next(convertToParamMap({ performers: 'p-2', performerMode: 'OR', mode: 'AND' }));
+    expect(discoverService.getScenesFeed.mock.lastCall?.slice(5)).toEqual([
+      'AND',
+      undefined,
+      ['studio-1'],
+      ['p-2'],
+      'OR',
+    ]);
+    paramMap$.next(convertToParamMap({ studioId: 'studio-2' }));
+    expect(discoverService.getScenesFeed.mock.lastCall?.[7]).toEqual(['studio-2']);
+  });
+  it('changes matching from page one, persists labels and clears performers without losing studio scope', async () => {
+    const { fixture, discoverService, navigateSpy } = await renderPage();
+    const c = fixture.componentInstance as any;
+    c.onPerformersChanged([
+      { id: 'p-1', name: 'Example, Alias' },
+      { id: 'p-2', name: 'Second' },
+    ]);
+    expect(navigateSpy.mock.lastCall?.[1]?.queryParams).toMatchObject({
+      performers: 'p-1,p-2',
+      performerNames: '["Example, Alias","Second"]',
+      performerMode: null,
+    });
+    c.onPerformerModeChanged('AND');
+    expect(discoverService.getScenesFeed.mock.lastCall?.[9]).toBe('AND');
+    expect(discoverService.getScenesFeed.mock.lastCall?.[0]).toBe(1);
+    c.onPerformersChanged([]);
+    expect(discoverService.getScenesFeed.mock.lastCall?.[7]).toEqual(['studio-1']);
+    expect(discoverService.getScenesFeed.mock.lastCall?.[8]).toEqual([]);
+    expect(navigateSpy.mock.lastCall?.[1]?.queryParams.performers).toBeNull();
+    c.onPerformerModeChanged('invalid');
+    expect(c.selectedPerformerMode()).toBe('AND');
+  });
+  it('bounds URL performers and falls back safely for malformed labels and mode', async () => {
+    const { fixture } = await renderPage({
+      performers: Array.from({ length: 25 }, (_, i) => 'p-' + i).join(','),
+      performerNames: 'invalid',
+      performerMode: 'invalid',
+    });
+    const c = fixture.componentInstance as any;
+    expect(c.selectedPerformers()).toHaveLength(20);
+    expect(c.selectedPerformers()[0].name).toBe('p-0');
+    expect(c.selectedPerformerMode()).toBe('OR');
   });
 });

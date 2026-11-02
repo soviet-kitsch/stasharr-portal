@@ -64,4 +64,20 @@ describe('PerformerPickerComponent', () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(component.options()).toEqual([{ id: 'selected', name: 'Selected' }]);
   });
+  it('scopes suggestions to the studio and invalidates earlier-studio results', async () => {
+    const old = new Subject<any>();
+    api.getPerformersFeed
+      .mockReturnValueOnce(old)
+      .mockReturnValue(of({ items: [{ id: 'new', name: 'Current studio performer' }] }));
+    component.studioId = 'studio-1';
+    component.search('Example');
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.getPerformersFeed.mock.lastCall?.[2].studioId).toBe('studio-1');
+    component.studioId = 'studio-2';
+    old.next({ items: [{ id: 'old', name: 'Other studio' }] });
+    expect(component.options()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.getPerformersFeed.mock.lastCall?.[2].studioId).toBe('studio-2');
+    expect(component.options()[0].id).toBe('new');
+  });
 });

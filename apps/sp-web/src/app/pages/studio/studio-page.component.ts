@@ -1,4 +1,8 @@
 import {
+  PerformerPickerComponent,
+  PerformerSelection,
+} from '../../shared/performer-picker/performer-picker.component';
+import {
   AfterViewInit,
   Component,
   ElementRef,
@@ -66,6 +70,7 @@ interface MultiSelectOption {
     MultiSelect,
     ButtonDirective,
     SceneCardComponent,
+    PerformerPickerComponent,
     SceneRequestModalComponent,
   ],
   templateUrl: './studio-page.component.html',
@@ -163,6 +168,12 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly selectedTagMode = signal<SceneTagMatchMode>(
     StudioPageComponent.DEFAULT_TAG_MODE,
   );
+  protected readonly selectedPerformers = signal<PerformerSelection[]>([]);
+  protected readonly selectedPerformerMode = signal<SceneTagMatchMode>('OR');
+  protected readonly performerMatchOptions = [
+    { label: 'Any performer (OR)', value: 'OR' },
+    { label: 'All performers (AND)', value: 'AND' },
+  ];
   protected readonly tagSearchTerm = signal('');
   protected readonly selectedTags = signal<SceneTagOption[]>([]);
   protected readonly tagSelectedIdsModel = signal<string[]>([]);
@@ -481,6 +492,20 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.resetScenesAndReload();
   }
 
+  protected onPerformersChanged(selection: PerformerSelection[]): void {
+    const next = selection.slice(0, 20);
+    if (JSON.stringify(next) === JSON.stringify(this.selectedPerformers())) return;
+    this.selectedPerformers.set(next);
+    this.syncUrlWithCurrentFilters(false);
+    this.resetScenesAndReload();
+  }
+  protected onPerformerModeChanged(mode: SceneTagMatchMode): void {
+    if (!['AND', 'OR'].includes(mode) || mode === this.selectedPerformerMode()) return;
+    this.selectedPerformerMode.set(mode);
+    this.syncUrlWithCurrentFilters(false);
+    this.resetScenesAndReload();
+  }
+
   protected onTagMatchModeChanged(nextValue: string): void {
     if (nextValue !== 'OR' && nextValue !== 'AND') {
       return;
@@ -594,6 +619,8 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
         this.selectedTagMode(),
         this.selectedFavoritesFilter(),
         [currentStudioId],
+        this.selectedPerformers().map((p) => p.id),
+        this.selectedPerformerMode(),
       )
       .pipe(
         finalize(() => {
@@ -729,6 +756,8 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     mode: SceneTagMatchMode;
     tagIds: string[];
     tagNamesById: Map<string, string>;
+    performers: PerformerSelection[];
+    performerMode: SceneTagMatchMode;
   } {
     const sortParam = queryParamMap.get('sort');
     const sort: SceneFeedSort =
@@ -774,6 +803,26 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
+    const rawPerformerIds = (queryParamMap.get('performers') ?? '')
+      .split(',')
+      .map((id) => id.trim());
+    let performerNames: unknown = [];
+    try {
+      performerNames = JSON.parse(queryParamMap.get('performerNames') ?? '[]');
+    } catch {}
+    const performersById = new Map<string, PerformerSelection>();
+    rawPerformerIds.forEach((id, index) => {
+      if (!id || performersById.has(id) || performersById.size >= 20) return;
+      performersById.set(id, {
+        id,
+        name:
+          Array.isArray(performerNames) && typeof performerNames[index] === 'string'
+            ? performerNames[index]
+            : id,
+      });
+    });
+    const performers = [...performersById.values()];
+
     return {
       sort,
       direction,
@@ -781,6 +830,8 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       mode,
       tagIds: this.dedupeStrings(rawTagIds),
       tagNamesById,
+      performers,
+      performerMode: queryParamMap.get('performerMode') === 'AND' ? 'AND' : 'OR',
     };
   }
 
@@ -791,6 +842,8 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     mode: SceneTagMatchMode;
     tagIds: string[];
     tagNamesById: Map<string, string>;
+    performers: PerformerSelection[];
+    performerMode: SceneTagMatchMode;
   }): boolean {
     const currentTagIds = this.selectedTagIds();
     const tagsChanged = !this.areStringArraysEqual(currentTagIds, state.tagIds);
@@ -799,12 +852,16 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.sceneSortDirection() !== state.direction ||
       this.selectedFavorites() !== state.favorites ||
       this.selectedTagMode() !== state.mode ||
+      this.selectedPerformerMode() !== state.performerMode ||
+      JSON.stringify(this.selectedPerformers()) !== JSON.stringify(state.performers) ||
       tagsChanged;
 
     if (!changed) {
       return false;
     }
 
+    this.selectedPerformers.set(state.performers);
+    this.selectedPerformerMode.set(state.performerMode);
     this.sceneSort.set(state.sort);
     this.sceneSortDirection.set(state.direction);
     this.selectedFavorites.set(state.favorites);
@@ -835,6 +892,15 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private syncUrlWithCurrentFilters(replaceUrl: boolean): void {
     const next = {
+      performers: this.selectedPerformers().length
+        ? this.selectedPerformers()
+            .map((p) => p.id)
+            .join(',')
+        : null,
+      performerNames: this.selectedPerformers().length
+        ? JSON.stringify(this.selectedPerformers().map((p) => p.name))
+        : null,
+      performerMode: this.selectedPerformerMode() === 'AND' ? 'AND' : null,
       sort: this.sceneSort() === StudioPageComponent.DEFAULT_SCENE_SORT ? null : this.sceneSort(),
       dir:
         this.sceneSortDirection() === StudioPageComponent.DEFAULT_SCENE_DIRECTION
@@ -859,6 +925,9 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const current = this.route.snapshot.queryParamMap;
     if (
+      (current.get('performers') ?? null) === next.performers &&
+      (current.get('performerNames') ?? null) === next.performerNames &&
+      (current.get('performerMode') ?? null) === next.performerMode &&
       (current.get('sort') ?? null) === next.sort &&
       (current.get('dir') ?? null) === next.dir &&
       (current.get('fav') ?? null) === next.fav &&

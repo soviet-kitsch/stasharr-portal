@@ -257,6 +257,30 @@
       </div>
 
       <div class="filter-grid">
+        <div class="filter-panel performer-filter">
+          <span class="app-control-label">Performers in Scene</span>
+          <app-performer-picker
+            [studioId]="studioId()"
+            [selected]="selectedPerformers()"
+            (selectionChange)="onPerformersChanged($event)"
+          />
+          <p-select
+            inputId="studio-performer-mode"
+            ariaLabel="Performer match mode"
+            [ngModel]="selectedPerformerMode()"
+            (ngModelChange)="onPerformerModeChanged($event)"
+            [options]="performerMatchOptions"
+            optionLabel="label"
+            optionValue="value"
+            [appendTo]="'body'"
+            panelStyleClass="app-overlay-panel"
+          />
+          <small>{{
+            selectedPerformerMode() === 'AND'
+              ? 'Scenes featuring every selected performer at this studio.'
+              : 'Scenes featuring any selected performer at this studio.'
+          }}</small>
+        </div>
         <div class="filter-panel">
           <label class="control-field app-control-field">
             <span class="app-control-label">Tags</span>

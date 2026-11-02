@@ -58,6 +58,13 @@ export class PerformerPickerComponent implements OnDestroy {
   private version = 0;
   private current: PerformerSelection[] = [];
   private results: PerformerSelection[] = [];
+  private studio: string | null = null;
+  @Input() set studioId(value: string | null) {
+    const next = value?.trim() || null;
+    if (next === this.studio) return;
+    this.studio = next;
+    this.search(this.term);
+  }
   private term = '';
   protected readonly selectedIds = signal<string[]>([]);
   protected readonly options = signal<PerformerSelection[]>([]);
@@ -85,7 +92,12 @@ export class PerformerPickerComponent implements OnDestroy {
         const version = this.version;
         this.loading.set(!!name);
         const response$: Observable<{ items: PerformerSelection[] }> = name
-          ? this.api.getPerformersFeed(1, 50, { name, sort: 'NAME', direction: 'ASC' })
+          ? this.api.getPerformersFeed(1, 50, {
+              name,
+              sort: 'NAME',
+              direction: 'ASC',
+              ...(this.studio ? { studioId: this.studio } : {}),
+            })
           : of({ items: [] });
         return response$.pipe(
           catchError(() => {

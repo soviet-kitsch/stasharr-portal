@@ -30,8 +30,12 @@ ul {
 .hero-shade {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(90deg, rgb(10 17 24 / 84%) 0%, rgb(10 17 24 / 55%) 54%, rgb(10 17 24 / 70%) 100%);
+  background: linear-gradient(
+    90deg,
+    rgb(10 17 24 / 84%) 0%,
+    rgb(10 17 24 / 55%) 54%,
+    rgb(10 17 24 / 70%) 100%
+  );
 }
 
 .hero-layout {
@@ -355,7 +359,16 @@ ul {
   align-items: start;
 }
 
+.performer-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .filter-grid {
+  display: grid;
+  gap: 0.55rem;
   margin-top: 0.55rem;
 }
 
