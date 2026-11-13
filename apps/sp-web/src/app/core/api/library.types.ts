@@ -1,8 +1,4 @@
-export type LibrarySceneSort =
-  | 'CREATED_AT'
-  | 'UPDATED_AT'
-  | 'TITLE'
-  | 'RELEASE_DATE';
+export type LibrarySceneSort = 'CREATED_AT' | 'UPDATED_AT' | 'TITLE' | 'RELEASE_DATE';
 
 export type LibrarySortDirection = 'ASC' | 'DESC';
 export type LibraryTagMatchMode = 'OR' | 'AND';
@@ -15,6 +11,7 @@ export interface LibraryTagOption {
 export interface LibraryStudioOption {
   id: string;
   name: string;
+  childStudios?: Array<{ id: string; name: string }>;
 }
 
 export interface LibrarySceneItem {

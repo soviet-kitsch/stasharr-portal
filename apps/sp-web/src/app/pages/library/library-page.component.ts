@@ -1,3 +1,4 @@
+import { studioOptionsForGroup } from '../../shared/studio-options';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   AfterViewInit,
@@ -545,7 +546,11 @@ export class LibraryPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const previousLabels = new Map(
       this.selectedStudios().map((studio) => [studio.id, studio.label]),
     );
-    const currentLabels = new Map(this.studioOptions().map((option) => [option.id, option.name]));
+    const currentLabels = new Map(
+      this.studioOptions()
+        .flatMap(studioOptionsForGroup)
+        .map((option) => [option.value, option.label]),
+    );
     this.selectedStudios.set(
       nextIds.map((id) => ({
         id,
@@ -1113,11 +1118,8 @@ export class LibraryPageComponent implements OnInit, AfterViewInit, OnDestroy {
       });
     }
 
-    for (const option of options) {
-      merged.set(option.id, {
-        label: option.name,
-        value: option.id,
-      });
+    for (const option of options.flatMap(studioOptionsForGroup)) {
+      merged.set(option.value, option);
     }
 
     this.studioSelectOptions.set([...merged.values()]);

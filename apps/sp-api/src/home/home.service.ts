@@ -299,7 +299,7 @@ export class HomeService {
     const studios = await this.libraryService.searchStudios(normalizedQuery);
     return studios.map((studio) => ({
       ...studio,
-      childStudios: [],
+      childStudios: studio.childStudios ?? [],
     }));
   }
 

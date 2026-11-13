@@ -1,3 +1,4 @@
+import { studioNetworkValue } from '../../shared/studio-options';
 import {
   PerformerPickerComponent,
   PerformerSelection,
@@ -168,6 +169,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly selectedTagMode = signal<SceneTagMatchMode>(
     StudioPageComponent.DEFAULT_TAG_MODE,
   );
+  protected readonly includeChildStudios = signal(false);
   protected readonly selectedPerformers = signal<PerformerSelection[]>([]);
   protected readonly selectedPerformerMode = signal<SceneTagMatchMode>('OR');
   protected readonly performerMatchOptions = [
@@ -492,6 +494,18 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.resetScenesAndReload();
   }
 
+  protected setIncludeChildStudios(include: boolean): void {
+    if (include === this.includeChildStudios()) return;
+    this.includeChildStudios.set(include);
+    this.syncUrlWithCurrentFilters(false);
+    this.resetScenesAndReload();
+  }
+
+  protected studioSelection(): string | null {
+    const id = this.studioId();
+    return id && this.includeChildStudios() ? studioNetworkValue(id) : id;
+  }
+
   protected onPerformersChanged(selection: PerformerSelection[]): void {
     const next = selection.slice(0, 20);
     if (JSON.stringify(next) === JSON.stringify(this.selectedPerformers())) return;
@@ -591,7 +605,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private loadNextScenesPage(): void {
-    const currentStudioId = this.studioId();
+    const currentStudioId = this.studioSelection();
     if (!currentStudioId || this.scenesInFlight() || !this.scenesHasMore()) {
       return;
     }
@@ -758,6 +772,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     tagNamesById: Map<string, string>;
     performers: PerformerSelection[];
     performerMode: SceneTagMatchMode;
+    includeChildStudios: boolean;
   } {
     const sortParam = queryParamMap.get('sort');
     const sort: SceneFeedSort =
@@ -832,6 +847,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       tagNamesById,
       performers,
       performerMode: queryParamMap.get('performerMode') === 'AND' ? 'AND' : 'OR',
+      includeChildStudios: queryParamMap.get('includeChildStudios') === 'true',
     };
   }
 
@@ -844,6 +860,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     tagNamesById: Map<string, string>;
     performers: PerformerSelection[];
     performerMode: SceneTagMatchMode;
+    includeChildStudios: boolean;
   }): boolean {
     const currentTagIds = this.selectedTagIds();
     const tagsChanged = !this.areStringArraysEqual(currentTagIds, state.tagIds);
@@ -853,6 +870,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedFavorites() !== state.favorites ||
       this.selectedTagMode() !== state.mode ||
       this.selectedPerformerMode() !== state.performerMode ||
+      this.includeChildStudios() !== state.includeChildStudios ||
       JSON.stringify(this.selectedPerformers()) !== JSON.stringify(state.performers) ||
       tagsChanged;
 
@@ -862,6 +880,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.selectedPerformers.set(state.performers);
     this.selectedPerformerMode.set(state.performerMode);
+    this.includeChildStudios.set(state.includeChildStudios);
     this.sceneSort.set(state.sort);
     this.sceneSortDirection.set(state.direction);
     this.selectedFavorites.set(state.favorites);
@@ -892,6 +911,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private syncUrlWithCurrentFilters(replaceUrl: boolean): void {
     const next = {
+      includeChildStudios: this.includeChildStudios() ? 'true' : null,
       performers: this.selectedPerformers().length
         ? this.selectedPerformers()
             .map((p) => p.id)
@@ -925,6 +945,7 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const current = this.route.snapshot.queryParamMap;
     if (
+      (current.get('includeChildStudios') ?? null) === next.includeChildStudios &&
       (current.get('performers') ?? null) === next.performers &&
       (current.get('performerNames') ?? null) === next.performerNames &&
       (current.get('performerMode') ?? null) === next.performerMode &&

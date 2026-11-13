@@ -1,3 +1,4 @@
+import { StashAdapter } from '../providers/stash/stash.adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { LibrarySceneQueryService } from './library-scene-query.service';
 import { LibraryService } from './library.service';
@@ -63,6 +64,10 @@ describe('LibraryService', () => {
     $queryRaw: queryRawMock,
   } as unknown as PrismaService;
 
+  const stashAdapter = {
+    searchStudios: jest.fn(),
+    resolveStudioIds: jest.fn(),
+  } as unknown as StashAdapter;
   let service: LibraryService;
 
   beforeEach(() => {
@@ -76,7 +81,8 @@ describe('LibraryService', () => {
     });
     service = new LibraryService(
       prismaService,
-      new LibrarySceneQueryService(prismaService),
+      new LibrarySceneQueryService(prismaService, stashAdapter),
+      stashAdapter,
     );
     librarySceneIndexFindManyMock.mockResolvedValue([buildLibraryRow()]);
     librarySceneIndexAggregateMock.mockResolvedValue({
@@ -84,6 +90,7 @@ describe('LibraryService', () => {
       _max: { lastSyncedAt: new Date('2026-03-30T00:00:00.000Z') },
     });
     queryRawMock.mockResolvedValue([]);
+    jest.mocked(stashAdapter.searchStudios).mockResolvedValue([]);
   });
 
   it('builds the library feed from the local-library projection', async () => {
@@ -371,5 +378,40 @@ describe('LibraryService', () => {
     await expect(service.searchStudios('')).resolves.toEqual([]);
 
     expect(queryRawMock).not.toHaveBeenCalled();
+  });
+  it('offers networks without directly indexed scenes and expands local studio IDs before counting library matches', async () => {
+    jest
+      .mocked(stashAdapter.searchStudios)
+      .mockResolvedValue([
+        {
+          id: '10',
+          name: 'Archive Network',
+          childStudios: [{ id: '11', name: 'Archive Studio' }],
+        },
+      ]);
+    expect(await service.searchStudios('archive')).toEqual([
+      {
+        id: '10',
+        name: 'Archive Network',
+        childStudios: [{ id: '11', name: 'Archive Studio' }],
+      },
+    ]);
+    jest
+      .mocked(stashAdapter.resolveStudioIds)
+      .mockResolvedValue(['10', '11', '12']);
+    await service.getScenesFeed(2, 24, 'TITLE', 'ASC', undefined, [], 'OR', [
+      'network:10',
+    ]);
+    expect(stashAdapter.resolveStudioIds).toHaveBeenCalledWith(
+      ['network:10'],
+      expect.objectContaining({ baseUrl: 'http://stash.local' }),
+    );
+    const where = { AND: [{ studioId: { in: ['10', '11', '12'] } }] };
+    expect(librarySceneIndexFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where, skip: 24 }),
+    );
+    expect(librarySceneIndexAggregateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where }),
+    );
   });
 });

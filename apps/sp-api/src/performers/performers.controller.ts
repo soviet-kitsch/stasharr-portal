@@ -34,6 +34,14 @@ export class PerformersController {
     return this.performersService.searchStudios(query.query);
   }
 
+  @Get('network-suggestions')
+  searchNetworkPerformers(@Query() query: PerformersQueryDto) {
+    return this.performersService.searchNetworkPerformers(
+      query.name,
+      query.studioId,
+    );
+  }
+
   @Get(':performerId/scenes')
   getPerformerScenes(
     @Param('performerId') performerId: string,

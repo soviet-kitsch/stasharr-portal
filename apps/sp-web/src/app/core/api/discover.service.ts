@@ -134,6 +134,18 @@ export class DiscoverService {
     return this.http.get<PerformerFeedResponse>('/api/performers', { params });
   }
 
+  searchNetworkPerformers(
+    name: string,
+    studioId: string,
+  ): Observable<Array<{ id: string; name: string }>> {
+    return this.http.get<Array<{ id: string; name: string }>>(
+      '/api/performers/network-suggestions',
+      {
+        params: new HttpParams().set('name', name).set('studioId', studioId),
+      },
+    );
+  }
+
   getPerformerDetails(performerId: string): Observable<PerformerDetails> {
     return this.http.get<PerformerDetails>(`/api/performers/${encodeURIComponent(performerId)}`);
   }

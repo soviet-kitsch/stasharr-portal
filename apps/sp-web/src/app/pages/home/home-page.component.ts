@@ -1,3 +1,4 @@
+import { studioOptionsForGroup } from '../../shared/studio-options';
 import {
   Component,
   ElementRef,
@@ -1226,16 +1227,7 @@ export class HomePageComponent implements OnInit, OnDestroy {
       (this.railForm()?.selectedStudios ?? []).map((studio) => [studio.id, studio.label]),
     );
     const grouped = options.map((network) => {
-      const groupItems: MultiSelectOption[] = [
-        {
-          label: `${network.name} (Network)`,
-          value: network.id,
-        },
-        ...network.childStudios.map((child) => ({
-          label: child.name,
-          value: child.id,
-        })),
-      ];
+      const groupItems = studioOptionsForGroup(network);
 
       return {
         label: network.name,
@@ -1264,11 +1256,8 @@ export class HomePageComponent implements OnInit, OnDestroy {
   private studioLabelMap(): Map<string, string> {
     const labels = new Map<string, string>();
 
-    for (const option of this.studioOptions()) {
-      labels.set(option.id, option.name);
-      for (const child of option.childStudios) {
-        labels.set(child.id, child.name);
-      }
+    for (const option of this.studioOptions().flatMap(studioOptionsForGroup)) {
+      labels.set(option.value, option.label);
     }
 
     return labels;

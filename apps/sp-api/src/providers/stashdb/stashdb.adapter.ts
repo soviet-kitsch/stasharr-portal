@@ -1,3 +1,4 @@
+import { resolveStudioSelection } from '../studio-selection';
 import {
   BadGatewayException,
   Injectable,
@@ -642,6 +643,67 @@ export class StashdbAdapter {
       .filter((tag): tag is StashdbTagOption => tag !== null);
   }
 
+  async searchPerformersInStudioNetwork(
+    name: string,
+    selection: string,
+    config: StashdbAdapterBaseConfig,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const ids = await this.resolveStudioIds([selection], config);
+    const results = new Map<string, { id: string; name: string }>();
+    const batchSize = 20;
+    for (let offset = 0; offset < ids.length; offset += batchSize) {
+      const batch = ids.slice(offset, offset + batchSize);
+      const variables = Object.fromEntries(
+        batch.map((id, index) => [`studio${index}`, id]),
+      );
+      const declarations = batch.map((_, index) => `$studio${index}: ID!`);
+      const fields = batch.map(
+        (_, index) => `
+        studio${index}: queryPerformers(input: {
+          name: $name, studio_id: $studio${index}, page: 1, per_page: 50, sort: NAME, direction: ASC
+        }) { performers { id name } }
+      `,
+      );
+      const payload = await this.executeQuery(
+        config,
+        `query NetworkPerformerSuggestions($name: String!, ${declarations.join(', ')}) { ${fields.join(' ')} }`,
+        { name, ...variables },
+      );
+      const data = payload.data as
+        | Record<
+            string,
+            NonNullable<StashdbGraphqlResponse['data']>['queryPerformers']
+          >
+        | undefined;
+      for (let index = 0; index < batch.length; index += 1) {
+        const result = data?.[`studio${index}`];
+        if (!Array.isArray(result?.performers)) {
+          throw new BadGatewayException(
+            'Studio network performer suggestions could not be loaded.',
+          );
+        }
+        for (const performer of result.performers) {
+          if (
+            typeof performer.id === 'string' &&
+            typeof performer.name === 'string'
+          ) {
+            results.set(performer.id, {
+              id: performer.id,
+              name: performer.name,
+            });
+          }
+        }
+      }
+    }
+    return [...results.values()]
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name) ||
+          left.id.localeCompare(right.id),
+      )
+      .slice(0, 50);
+  }
+
   async getPerformersFeed(
     config: StashdbPerformerFeedConfig,
   ): Promise<StashdbPerformersFeedResult> {
@@ -1152,14 +1214,13 @@ export class StashdbAdapter {
   async getScenesForPerformer(
     config: StashdbPerformerScenesConfig,
   ): Promise<StashdbTrendingScenesResult> {
-    const normalizedStudioIds = (config.studioIds ?? [])
-      .map((id) => id.trim())
-      .filter((id) => id.length > 0);
+    const studioIds = await this.resolveStudioIds(
+      config.studioIds ?? [],
+      config,
+    );
     const normalizedTagIds = (config.tagIds ?? [])
       .map((id) => id.trim())
       .filter((id) => id.length > 0);
-
-    const studioIds = [...new Set(normalizedStudioIds)];
     const tagIds = [...new Set(normalizedTagIds)];
 
     const variableDeclarations = [
@@ -1304,6 +1365,17 @@ export class StashdbAdapter {
     }
   }
 
+  resolveStudioIds(
+    values: string[],
+    config: StashdbAdapterBaseConfig,
+  ): Promise<string[]> {
+    return resolveStudioSelection(
+      values,
+      async (query, variables) =>
+        (await this.executeQuery(config, query, variables)).data,
+    );
+  }
+
   private async getSceneFeed(
     config: StashdbAdapterSceneFeedConfig | StashdbAdapterTrendingConfig,
     sort: StashdbSceneFeedSort,
@@ -1317,10 +1389,10 @@ export class StashdbAdapter {
       config.tagFilter.tagIds.length > 0
         ? config.tagFilter
         : null;
-    const studioIds =
-      'studioIds' in config && config.studioIds
-        ? [...new Set(config.studioIds.map((id) => id.trim()).filter(Boolean))]
-        : [];
+    const studioIds = await this.resolveStudioIds(
+      'studioIds' in config ? (config.studioIds ?? []) : [],
+      config,
+    );
     const performerIds =
       'performerIds' in config
         ? [

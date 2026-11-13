@@ -1,3 +1,4 @@
+import { hasStudioNetworks } from '../providers/studio-selection';
 import { Injectable } from '@nestjs/common';
 import {
   type CatalogProviderKey,
@@ -79,7 +80,13 @@ export class HybridScenesService {
     const effectiveAvailability = this.resolveEffectiveAvailability(config);
     const desiredInLibrary = effectiveAvailability === 'IN_LIBRARY';
     const normalizedTagIds = this.dedupeStrings(config.tagIds ?? []);
-    const normalizedStudioIds = this.dedupeStrings(config.studioIds ?? []);
+    const studioSelection = this.dedupeStrings(config.studioIds ?? []);
+    const normalizedStudioIds = hasStudioNetworks(studioSelection)
+      ? await this.stashdbAdapter.resolveStudioIds(
+          studioSelection,
+          stashdbConfig,
+        )
+      : studioSelection;
     const availabilityCache = new Map<string, boolean>();
     const activeCatalogProviderKey = resolveCatalogProviderKey(
       stashdbConfig.baseUrl,

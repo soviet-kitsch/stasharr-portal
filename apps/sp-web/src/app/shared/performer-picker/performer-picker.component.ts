@@ -1,3 +1,4 @@
+import { isStudioNetwork } from '../studio-options';
 import { Component, Input, Output, EventEmitter, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MultiSelect } from 'primeng/multiselect';
@@ -7,6 +8,7 @@ import {
   Subscription,
   catchError,
   debounceTime,
+  map,
   of,
   switchMap,
   tap,
@@ -63,6 +65,8 @@ export class PerformerPickerComponent implements OnDestroy {
     const next = value?.trim() || null;
     if (next === this.studio) return;
     this.studio = next;
+    this.results = [];
+    this.rebuild();
     this.search(this.term);
   }
   private term = '';
@@ -91,14 +95,7 @@ export class PerformerPickerComponent implements OnDestroy {
       switchMap((name) => {
         const version = this.version;
         this.loading.set(!!name);
-        const response$: Observable<{ items: PerformerSelection[] }> = name
-          ? this.api.getPerformersFeed(1, 50, {
-              name,
-              sort: 'NAME',
-              direction: 'ASC',
-              ...(this.studio ? { studioId: this.studio } : {}),
-            })
-          : of({ items: [] });
+        const response$ = this.searchPerformers(name);
         return response$.pipe(
           catchError(() => {
             if (version === this.version) this.error.set('Could not search performers. Try again.');
@@ -114,6 +111,19 @@ export class PerformerPickerComponent implements OnDestroy {
       }),
     )
     .subscribe();
+  private searchPerformers(name: string): Observable<{ items: PerformerSelection[] }> {
+    if (!name) return of({ items: [] });
+    if (isStudioNetwork(this.studio)) {
+      return this.api.searchNetworkPerformers(name, this.studio).pipe(map((items) => ({ items })));
+    }
+    return this.api.getPerformersFeed(1, 50, {
+      name,
+      sort: 'NAME',
+      direction: 'ASC',
+      ...(this.studio ? { studioId: this.studio } : {}),
+    });
+  }
+
   protected search(value: string): void {
     this.term = value.trim();
     this.terms.next(this.term);

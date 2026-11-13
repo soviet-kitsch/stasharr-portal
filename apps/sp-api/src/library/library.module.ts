@@ -1,3 +1,4 @@
+import { StashModule } from '../providers/stash/stash.module';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LibraryController } from './library.controller';
@@ -5,7 +6,7 @@ import { LibrarySceneQueryService } from './library-scene-query.service';
 import { LibraryService } from './library.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, StashModule],
   controllers: [LibraryController],
   providers: [LibraryService, LibrarySceneQueryService],
   exports: [LibraryService],

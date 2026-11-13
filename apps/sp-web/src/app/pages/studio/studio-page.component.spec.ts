@@ -60,11 +60,11 @@ describe('StudioPageComponent', () => {
     TestBed.resetTestingModule();
   });
 
-  async function renderPage(params: Record<string, string> = {}) {
+  async function renderPage(params: Record<string, string> = {}, details = buildStudio()) {
     const paramMap$ = new BehaviorSubject(convertToParamMap({ studioId: 'studio-1' }));
     const queryParamMap$ = new BehaviorSubject(convertToParamMap(params));
     const discoverService = {
-      getStudioDetails: vi.fn().mockReturnValue(of(buildStudio())),
+      getStudioDetails: vi.fn().mockReturnValue(of(details)),
       getScenesFeed: vi.fn().mockReturnValue(
         of({
           total: 1,
@@ -208,5 +208,38 @@ describe('StudioPageComponent', () => {
     expect(c.selectedPerformers()).toHaveLength(20);
     expect(c.selectedPerformers()[0].name).toBe('p-0');
     expect(c.selectedPerformerMode()).toBe('OR');
+  });
+  it('switches between the parent and whole network while retaining performer filters and restoring URL state', async () => {
+    const { fixture, discoverService, navigateSpy, queryParamMap$ } = await renderPage(
+      { performers: 'p-1,p-2', performerMode: 'AND' },
+      buildStudio({
+        childStudios: [
+          { id: 'child-1', name: 'Child Studio', imageUrl: null, aliases: [], deleted: false },
+        ],
+      }),
+    );
+    const toggle = fixture.nativeElement.querySelector(
+      '.studio-network-toggle input',
+    ) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    toggle.click();
+    fixture.detectChanges();
+    expect(discoverService.getScenesFeed).toHaveBeenLastCalledWith(
+      1,
+      24,
+      'DATE',
+      'DESC',
+      [],
+      'OR',
+      undefined,
+      ['network:studio-1'],
+      ['p-1', 'p-2'],
+      'AND',
+    );
+    expect(navigateSpy.mock.lastCall?.[1]?.queryParams.includeChildStudios).toBe('true');
+    queryParamMap$.next(convertToParamMap({ performers: 'p-1,p-2', performerMode: 'AND' }));
+    fixture.detectChanges();
+    expect(toggle.checked).toBe(false);
+    expect(discoverService.getScenesFeed.mock.lastCall?.[7]).toEqual(['studio-1']);
   });
 });

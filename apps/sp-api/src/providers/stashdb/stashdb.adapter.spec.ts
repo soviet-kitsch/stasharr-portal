@@ -1571,4 +1571,109 @@ describe('StashdbAdapter', () => {
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+  it('expands nested network selections before querying a page, including the parent and exact picks once', async () => {
+    const children = new Map([
+      ['network', ['child', 'sibling']],
+      ['child', ['grandchild']],
+      ['sibling', []],
+      ['grandchild', ['network']],
+    ]);
+    const lookups: string[] = [];
+    fetchMock.mockImplementation(async (_url, init) => {
+      const { query, variables } = JSON.parse(init.body);
+      if (query.includes('StudioNetworkChildren')) {
+        const data = Object.fromEntries(
+          Object.entries(variables).map(([alias, rawId]) => {
+            const id = rawId as string;
+            lookups.push(id);
+            return [
+              alias,
+              {
+                child_studios: children
+                  .get(id)
+                  ?.map((child) => ({ id: child })),
+              },
+            ];
+          }),
+        );
+        return Response.json({ data });
+      }
+      expect(variables).toMatchObject({
+        page: 2,
+        perPage: 24,
+        studioIds: ['network', 'child', 'exact', 'sibling', 'grandchild'],
+        performerIds: ['p-1', 'p-2'],
+      });
+      expect(query).toContain('modifier: INCLUDES_ALL');
+      return Response.json({
+        data: {
+          queryScenes: { count: 100, scenes: [{ id: 'grandchild-scene', title: 'Nested studio scene' }] },
+        },
+      });
+    });
+    const result = await adapter.getScenesBySort({
+      baseUrl: 'http://catalog/graphql',
+      page: 2,
+      perPage: 24,
+      sort: 'DATE',
+      studioIds: ['network:network', 'child', 'exact'],
+      performerIds: ['p-1', 'p-2'],
+      performerMode: 'AND',
+    });
+    expect(lookups).toEqual(['network', 'child', 'sibling', 'grandchild']);
+    expect(result.total).toBe(100);
+    expect(result.scenes[0]?.id).toBe('grandchild-scene');
+  });
+
+  it('combines scoped performer suggestions across the parent and child studios without duplicate people', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { studio0: { child_studios: [{ id: 'child' }] } },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ data: { studio0: { child_studios: [] } } }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: {
+            studio0: { performers: [{ id: 'shared', name: 'Example B' }] },
+            studio1: {
+              performers: [
+                { id: 'shared', name: 'Example B' },
+                { id: 'child-only', name: 'Example A' },
+              ],
+            },
+          },
+        }),
+      );
+    await expect(
+      adapter.searchPerformersInStudioNetwork('Example', 'network:parent', {
+        baseUrl: 'http://catalog/graphql',
+      }),
+    ).resolves.toEqual([
+      { id: 'child-only', name: 'Example A' },
+      { id: 'shared', name: 'Example B' },
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).variables).toEqual({
+      name: 'Example',
+      studio0: 'parent',
+      studio1: 'child',
+    });
+  });
+
+  it('fails an incomplete network lookup before requesting the scene feed', async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ data: {} }));
+    await expect(
+      adapter.getScenesBySort({
+        baseUrl: 'http://catalog/graphql',
+        page: 1,
+        perPage: 24,
+        sort: 'DATE',
+        studioIds: ['network:parent'],
+      }),
+    ).rejects.toThrow('Studio network membership');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

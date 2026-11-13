@@ -1,3 +1,4 @@
+import { resolveStudioSelection } from '../studio-selection';
 import {
   BadGatewayException,
   Injectable,
@@ -723,6 +724,17 @@ export class StashAdapter {
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
+  resolveStudioIds(
+    values: string[],
+    config: StashAdapterBaseConfig,
+  ): Promise<string[]> {
+    return resolveStudioSelection(
+      values,
+      async (query, variables) =>
+        (await this.executeQuery(config, query, variables)).data,
+    );
+  }
+
   async searchStudios(
     query: string,
     config: StashAdapterBaseConfig,
@@ -1255,7 +1267,7 @@ export class StashAdapter {
           parentName,
         );
         group.childStudios.set(studioId, studioName);
-        continue;
+        if (!studio.child_studios?.length) continue;
       }
 
       const group = this.getOrCreateStudioGroup(grouped, studioId, studioName);

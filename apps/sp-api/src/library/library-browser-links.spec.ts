@@ -1,3 +1,4 @@
+import { StashAdapter } from '../providers/stash/stash.adapter';
 import { LibrarySceneQueryService } from './library-scene-query.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -17,16 +18,19 @@ describe('library browser links', () => {
         viewUrl: 'http://outdated-internal:9999/scenes/42',
       },
     ]);
-    const service = new LibrarySceneQueryService({
-      integrationConfig: { findUnique },
-      librarySceneIndex: {
-        findMany,
-        aggregate: jest.fn().mockResolvedValue({
-          _count: { _all: 1 },
-          _max: { lastSyncedAt: null },
-        }),
-      },
-    } as unknown as PrismaService);
+    const service = new LibrarySceneQueryService(
+      {
+        integrationConfig: { findUnique },
+        librarySceneIndex: {
+          findMany,
+          aggregate: jest.fn().mockResolvedValue({
+            _count: { _all: 1 },
+            _max: { lastSyncedAt: null },
+          }),
+        },
+      } as unknown as PrismaService,
+      {} as StashAdapter,
+    );
     expect((await service.getScenesFeed()).items[0].viewUrl).toBe(
       'https://first.example/library/scenes/42',
     );

@@ -215,6 +215,17 @@
       aria-label="Studio scene filters"
     >
       <h2>Scenes</h2>
+      @if (studio.childStudios.length > 0 || includeChildStudios()) {
+        <label class="studio-network-toggle">
+          <input
+            #includeChildStudiosToggle
+            type="checkbox"
+            [checked]="includeChildStudios()"
+            (change)="setIncludeChildStudios(includeChildStudiosToggle.checked)"
+          />
+          Include child studios
+        </label>
+      }
       <div class="controls-row app-control-grid">
         <div class="control-field app-control-field">
           <span class="app-control-label">Sort</span>
@@ -260,7 +271,7 @@
         <div class="filter-panel performer-filter">
           <span class="app-control-label">Performers in Scene</span>
           <app-performer-picker
-            [studioId]="studioId()"
+            [studioId]="studioSelection()"
             [selected]="selectedPerformers()"
             (selectionChange)="onPerformersChanged($event)"
           />

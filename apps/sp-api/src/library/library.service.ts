@@ -1,3 +1,4 @@
+import { StashAdapter } from '../providers/stash/stash.adapter';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,6 +20,7 @@ export class LibraryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly librarySceneQueryService: LibrarySceneQueryService,
+    private readonly stashAdapter: StashAdapter,
   ) {}
 
   async getScenesFeed(
@@ -95,7 +97,9 @@ export class LibraryService {
       return [];
     }
 
-    return this.prisma.$queryRaw<LibraryStudioOptionDto[]>(Prisma.sql`
+    const indexed = await this.prisma.$queryRaw<
+      LibraryStudioOptionDto[]
+    >(Prisma.sql`
       SELECT DISTINCT "studioId" AS id, "studioName" AS name
       FROM "LibrarySceneIndex"
       WHERE "studioId" IS NOT NULL
@@ -104,5 +108,29 @@ export class LibraryService {
       ORDER BY name ASC
       LIMIT 25
     `);
+    const stash = await this.prisma.integrationConfig.findUnique({
+      where: { type: 'STASH' },
+    });
+    if (
+      !stash?.enabled ||
+      stash.status !== 'CONFIGURED' ||
+      !stash.baseUrl?.trim()
+    )
+      return indexed;
+    try {
+      const networks = await this.stashAdapter.searchStudios(normalizedQuery, {
+        baseUrl: stash.baseUrl,
+        apiKey: stash.apiKey,
+      });
+      const options = new Map(indexed.map((studio) => [studio.id, studio]));
+      for (const network of networks) {
+        if (network.childStudios.length > 0) options.set(network.id, network);
+      }
+      return [...options.values()].sort((left, right) =>
+        left.name.localeCompare(right.name),
+      );
+    } catch {
+      return indexed;
+    }
   }
 }

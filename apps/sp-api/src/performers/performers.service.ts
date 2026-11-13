@@ -1,3 +1,4 @@
+import { hasStudioNetworks } from '../providers/studio-selection';
 import { DiscoverResponseDto } from '../discover/dto/discover-item.dto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
@@ -80,6 +81,17 @@ export class PerformersService {
         cardImageUrl: withStashImageSize(performer.imageUrl, 300),
       })),
     };
+  }
+
+  async searchNetworkPerformers(name?: string, studioId?: string) {
+    const query = name?.trim();
+    const selection = studioId?.trim();
+    if (!query || !selection || !hasStudioNetworks([selection])) return [];
+    return this.stashdbAdapter.searchPerformersInStudioNetwork(
+      query,
+      selection,
+      await this.getActiveCatalogConfig(),
+    );
   }
 
   async getPerformerById(performerId: string): Promise<PerformerDetailsDto> {

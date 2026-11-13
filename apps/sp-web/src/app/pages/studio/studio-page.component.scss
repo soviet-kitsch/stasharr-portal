@@ -425,3 +425,13 @@ ul {
     grid-template-columns: 1fr;
   }
 }
+
+.studio-network-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  min-height: 2.25rem;
+  margin-bottom: 0.35rem;
+  cursor: pointer;
+}

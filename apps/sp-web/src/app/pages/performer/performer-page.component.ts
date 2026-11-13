@@ -1,3 +1,4 @@
+import { studioOptionsForGroup } from '../../shared/studio-options';
 import {
   AfterViewInit,
   Component,
@@ -420,6 +421,7 @@ export class PerformerPageComponent implements OnInit, AfterViewInit, OnDestroy 
         label: currentLabels.get(id) ?? previousLabels.get(id) ?? id,
       })),
     );
+    this.rebuildStudioSelectOptions();
     this.syncUrlWithCurrentFilters(false);
     this.resetScenesAndReload();
   }
@@ -741,7 +743,7 @@ export class PerformerPageComponent implements OnInit, AfterViewInit, OnDestroy 
         switchMap((query) => {
           if (!query) {
             this.studioOptions.set([]);
-            this.studioSelectOptions.set([]);
+            this.rebuildStudioSelectOptions();
             this.studioSearchError.set(null);
             return of<PerformerStudioOption[]>([]);
           }
@@ -762,21 +764,7 @@ export class PerformerPageComponent implements OnInit, AfterViewInit, OnDestroy 
       )
       .subscribe((options) => {
         this.studioOptions.set(options);
-        this.studioSelectOptions.set(
-          options.map((network) => ({
-            label: network.name,
-            items: [
-              {
-                label: `${network.name} (Network)`,
-                value: network.id,
-              },
-              ...network.childStudios.map((child) => ({
-                label: child.name,
-                value: child.id,
-              })),
-            ],
-          })),
-        );
+        this.rebuildStudioSelectOptions();
       });
   }
 
@@ -866,6 +854,7 @@ export class PerformerPageComponent implements OnInit, AfterViewInit, OnDestroy 
         })),
       );
       this.studioSelectedIds.set(state.studioIds);
+      this.rebuildStudioSelectOptions();
     }
 
     if (tagsChanged) {
@@ -961,14 +950,24 @@ export class PerformerPageComponent implements OnInit, AfterViewInit, OnDestroy 
       });
   }
 
+  private rebuildStudioSelectOptions(): void {
+    const groups = this.studioOptions().map((studio) => ({
+      label: studio.name,
+      items: studioOptionsForGroup(studio),
+    }));
+    const visible = new Set(groups.flatMap((group) => group.items.map((item) => item.value)));
+    const selected = this.selectedStudios()
+      .filter((studio) => !visible.has(studio.id))
+      .map((studio) => ({ label: studio.label, value: studio.id }));
+    if (selected.length > 0) groups.unshift({ label: 'Selected', items: selected });
+    this.studioSelectOptions.set(groups);
+  }
+
   private studioLabelMap(): Map<string, string> {
     const labels = new Map<string, string>();
 
-    for (const option of this.studioOptions()) {
-      labels.set(option.id, option.name);
-      for (const child of option.childStudios) {
-        labels.set(child.id, child.name);
-      }
+    for (const option of this.studioOptions().flatMap(studioOptionsForGroup)) {
+      labels.set(option.value, option.label);
     }
 
     return labels;

@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { StashAdapter } from '../providers/stash/stash.adapter';
+import { hasStudioNetworks } from '../providers/studio-selection';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -57,14 +59,17 @@ export class LibrarySceneQueryService {
   static readonly DEFAULT_DIRECTION: LibrarySortDirection = 'DESC';
   static readonly DEFAULT_TAG_MODE: LibraryTagMatchMode = 'OR';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stashAdapter: StashAdapter,
+  ) {}
 
   async getScenesFeed(
     page = LibrarySceneQueryService.DEFAULT_PAGE,
     perPage = LibrarySceneQueryService.DEFAULT_PER_PAGE,
     filters: LibrarySceneQueryFilters = {},
   ): Promise<LibraryScenesFeedDto> {
-    const normalizedFilters = this.normalizeFilters(filters);
+    const normalizedFilters = await this.normalizeFilters(filters);
     const where = this.buildWhere(normalizedFilters);
     const orderBy = this.buildOrderBy(
       normalizedFilters.sort,
@@ -105,7 +110,7 @@ export class LibrarySceneQueryService {
     limit: number,
     filters: LibrarySceneQueryFilters = {},
   ): Promise<LibrarySceneFeedItemDto[]> {
-    const normalizedFilters = this.normalizeFilters(filters);
+    const normalizedFilters = await this.normalizeFilters(filters);
     const rows = await this.prisma.librarySceneIndex.findMany({
       where: this.buildWhere(normalizedFilters),
       orderBy: this.buildOrderBy(
@@ -120,9 +125,9 @@ export class LibrarySceneQueryService {
     return rows.map((row) => this.toSceneFeedItem(row, browserBase));
   }
 
-  private normalizeFilters(
+  private async normalizeFilters(
     filters: LibrarySceneQueryFilters,
-  ): Required<LibrarySceneQueryFilters> & { query: string } {
+  ): Promise<Required<LibrarySceneQueryFilters>> {
     return {
       sort: filters.sort ?? LibrarySceneQueryService.DEFAULT_SORT,
       direction:
@@ -130,11 +135,33 @@ export class LibrarySceneQueryService {
       query: filters.query?.trim() ?? '',
       tagIds: this.normalizeIds(filters.tagIds ?? []),
       tagMode: filters.tagMode ?? LibrarySceneQueryService.DEFAULT_TAG_MODE,
-      studioIds: this.normalizeIds(filters.studioIds ?? []),
+      studioIds: await this.resolveStudioIds(filters.studioIds ?? []),
       favoritePerformersOnly: filters.favoritePerformersOnly ?? false,
       favoriteStudiosOnly: filters.favoriteStudiosOnly ?? false,
       favoriteTagsOnly: filters.favoriteTagsOnly ?? false,
     };
+  }
+
+  private async resolveStudioIds(values: string[]): Promise<string[]> {
+    const ids = this.normalizeIds(values);
+    if (!hasStudioNetworks(ids)) return ids;
+
+    const stash = await this.prisma.integrationConfig.findUnique({
+      where: { type: 'STASH' },
+    });
+    if (
+      !stash?.enabled ||
+      stash.status !== 'CONFIGURED' ||
+      !stash.baseUrl?.trim()
+    ) {
+      throw new ServiceUnavailableException(
+        'Configure Stash to filter the library by studio network.',
+      );
+    }
+    return this.stashAdapter.resolveStudioIds(ids, {
+      baseUrl: stash.baseUrl,
+      apiKey: stash.apiKey,
+    });
   }
 
   private buildWhere(
