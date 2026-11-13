@@ -1,6 +1,7 @@
 import { IntegrationStatus, IntegrationType } from '@prisma/client';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { StashAdapter } from '../providers/stash/stash.adapter';
 import {
   StashdbAdapter,
@@ -17,6 +18,7 @@ describe('ScenesService', () => {
   const catalogProviderService = {
     getConfiguredCatalogProvider: jest.fn(),
   } as unknown as CatalogProviderService;
+  const studioNetworkFavorite = { findMany: jest.fn() };
 
   const stashdbAdapter = {
     getSceneById: jest.fn(),
@@ -80,6 +82,7 @@ describe('ScenesService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    studioNetworkFavorite.findMany.mockResolvedValue([]);
     service = new ScenesService(
       integrationsService,
       catalogProviderService,
@@ -87,6 +90,7 @@ describe('ScenesService', () => {
       sceneStatusService,
       stashAdapter,
       whisparrAdapter,
+      { studioNetworkFavorite } as unknown as PrismaService,
     );
 
     integrationsService.findOne = jest
@@ -374,6 +378,18 @@ describe('ScenesService', () => {
       tagFilter: undefined,
       studioIds: [],
     });
+  });
+
+  it('passes active-catalog network favorites into the same studio feed used by Home', async () => {
+    studioNetworkFavorite.findMany.mockResolvedValue([{ studioId: 'network-1' }]);
+    await service.getScenesFeed(1, 20, 'DATE', 'DESC', [], 'OR', 'STUDIO');
+    expect(studioNetworkFavorite.findMany).toHaveBeenCalledWith({
+      where: { provider: 'STASHDB' },
+      select: { studioId: true },
+    });
+    expect(stashdbAdapter.getScenesBySort).toHaveBeenCalledWith(
+      expect.objectContaining({ favorites: 'STUDIO', favoriteNetworkIds: ['network-1'] }),
+    );
   });
 
   it('forwards selected tags and AND mode to stashdb adapter', async () => {

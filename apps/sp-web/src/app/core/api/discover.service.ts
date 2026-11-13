@@ -207,6 +207,13 @@ export class DiscoverService {
     );
   }
 
+  setStudioNetworkFavorite(studioId: string, favorite: boolean): Observable<{ favorited: boolean }> {
+    return this.http.put<{ favorited: boolean }>(
+      `/api/studios/${encodeURIComponent(studioId)}/network-favorite`,
+      { favorite },
+    );
+  }
+
   getStudiosFeed(
     page: number,
     perPage: number,

@@ -256,6 +256,13 @@ model HomeRail {
   @@index([sortOrder])
 }
 
+model StudioNetworkFavorite {
+  provider IntegrationType
+  studioId String
+
+  @@id([provider, studioId])
+}
+
 enum RequestStatus {
   REQUESTED
   PROCESSING

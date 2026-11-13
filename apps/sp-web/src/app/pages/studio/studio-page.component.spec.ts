@@ -13,6 +13,7 @@ function buildStudio(overrides: Partial<StudioDetails> = {}): StudioDetails {
     aliases: [],
     deleted: false,
     isFavorite: false,
+    isNetworkFavorite: false,
     createdAt: '2026-01-01',
     updatedAt: '2026-03-01',
     imageUrl: 'http://cdn.local/studio.jpg',
@@ -65,6 +66,12 @@ describe('StudioPageComponent', () => {
     const queryParamMap$ = new BehaviorSubject(convertToParamMap(params));
     const discoverService = {
       getStudioDetails: vi.fn().mockReturnValue(of(details)),
+      favoriteStudio: vi.fn((_id: string, favorite: boolean) =>
+        of({ favorited: favorite, alreadyFavorited: false }),
+      ),
+      setStudioNetworkFavorite: vi.fn((_id: string, favorite: boolean) =>
+        of({ favorited: favorite }),
+      ),
       getScenesFeed: vi.fn().mockReturnValue(
         of({
           total: 1,
@@ -241,5 +248,42 @@ describe('StudioPageComponent', () => {
     fixture.detectChanges();
     expect(toggle.checked).toBe(false);
     expect(discoverService.getScenesFeed.mock.lastCall?.[7]).toEqual(['studio-1']);
+  });
+
+  it('offers independent studio and network favorites with distinct icons in the parent dropdown', async () => {
+    const { fixture, discoverService } = await renderPage({}, buildStudio({
+      isFavorite: true,
+      childStudios: [{
+        id: 'child-1', name: 'Child Studio', imageUrl: null, aliases: [], deleted: false,
+      }],
+    }));
+    const trigger = fixture.nativeElement.querySelector('.favorite-menu-trigger') as HTMLButtonElement;
+    const choose = async (label: string) => {
+      trigger.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const option = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+        .find((item) => item.textContent?.trim() === label);
+      expect(option).toBeDefined();
+      option?.querySelector<HTMLElement>('.p-menu-item-link')?.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+
+    expect(trigger.querySelector('.pi-star-fill')).toBeTruthy();
+    expect(trigger.querySelector('.pi-sitemap')).toBeNull();
+    await choose('Favorite whole network');
+    expect(discoverService.setStudioNetworkFavorite).toHaveBeenCalledWith('studio-1', true);
+    expect(trigger.querySelector('.pi-star-fill')).toBeTruthy();
+    expect(trigger.querySelector('.pi-sitemap')).toBeTruthy();
+    await choose('Unfavorite this studio');
+    expect(discoverService.favoriteStudio).toHaveBeenCalledWith('studio-1', false);
+    expect(trigger.querySelector('.pi-star-fill')).toBeNull();
+    expect(trigger.querySelector('.pi-sitemap')).toBeTruthy();
+    await choose('Unfavorite whole network');
+    expect(discoverService.setStudioNetworkFavorite).toHaveBeenLastCalledWith('studio-1', false);
+    expect(trigger.querySelector('.pi-star')).toBeTruthy();
   });
 });

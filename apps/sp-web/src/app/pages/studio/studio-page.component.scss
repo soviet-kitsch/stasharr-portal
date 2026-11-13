@@ -144,6 +144,7 @@ ul {
 .favorite-indicator {
   width: 2rem;
   height: 2rem;
+  flex: none;
   border-radius: 999px;
   border: 1px solid rgb(220 233 246 / 45%);
   background: rgb(7 14 24 / 60%);
@@ -156,6 +157,18 @@ ul {
 
 .favorite-indicator.active {
   color: #ffcf4a;
+}
+
+.favorite-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: auto;
+  padding-inline: 0.5rem;
+}
+
+.favorite-menu-chevron {
+  font-size: 0.75rem;
 }
 
 .aliases {

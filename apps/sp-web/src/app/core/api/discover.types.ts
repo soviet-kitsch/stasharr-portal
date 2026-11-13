@@ -360,6 +360,7 @@ export interface StudioDetails {
   aliases: string[];
   deleted: boolean;
   isFavorite: boolean;
+  isNetworkFavorite: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   imageUrl: string | null;

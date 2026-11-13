@@ -1,4 +1,5 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { StashdbAdapter } from '../providers/stashdb/stashdb.adapter';
 import { StudiosService } from './studios.service';
@@ -12,6 +13,11 @@ describe('StudiosService', () => {
     getStudiosFeed: jest.fn(),
     getStudioById: jest.fn(),
   } as unknown as StashdbAdapter;
+  const studioNetworkFavorite = {
+    findUnique: jest.fn(),
+    createMany: jest.fn(),
+    deleteMany: jest.fn(),
+  };
 
   const stashdbIntegration = {
     integrationType: 'STASHDB',
@@ -25,7 +31,12 @@ describe('StudiosService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new StudiosService(catalogProviderService, stashdbAdapter);
+    studioNetworkFavorite.findUnique.mockResolvedValue(null);
+    service = new StudiosService(
+      catalogProviderService,
+      stashdbAdapter,
+      { studioNetworkFavorite } as unknown as PrismaService,
+    );
 
     catalogProviderService.getConfiguredCatalogProvider = jest
       .fn()
@@ -187,6 +198,7 @@ describe('StudiosService', () => {
       aliases: ['Alias One'],
       deleted: false,
       isFavorite: true,
+      isNetworkFavorite: false,
       createdAt: '2024-01-01',
       updatedAt: '2024-02-01',
       imageUrl: 'http://studio-image',
@@ -232,6 +244,39 @@ describe('StudiosService', () => {
       baseUrl: stashdbIntegration.baseUrl,
       apiKey: stashdbIntegration.apiKey,
     });
+  });
+
+  it('stores a network favorite independently of the provider studio favorite', async () => {
+    const key = { provider: 'STASHDB', studioId: 'studio-1' };
+    await expect(service.setNetworkFavorite('studio-1', true)).resolves.toEqual({
+      favorited: true,
+    });
+    expect(studioNetworkFavorite.createMany).toHaveBeenCalledWith({
+      data: [key],
+      skipDuplicates: true,
+    });
+    studioNetworkFavorite.findUnique.mockResolvedValue(key);
+    await expect(service.getStudioById('studio-1')).resolves.toMatchObject({
+      isFavorite: true,
+      isNetworkFavorite: true,
+    });
+    expect(studioNetworkFavorite.findUnique).toHaveBeenCalledWith({
+      where: { provider_studioId: key },
+    });
+    await expect(service.setNetworkFavorite('studio-1', false)).resolves.toEqual({
+      favorited: false,
+    });
+    expect(studioNetworkFavorite.deleteMany).toHaveBeenCalledWith({ where: key });
+    expect(stashdbAdapter.getStudioById).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a new network favorite for a studio without children', async () => {
+    jest.mocked(stashdbAdapter.getStudioById).mockResolvedValueOnce({
+      ...(await stashdbAdapter.getStudioById('studio-1', stashdbIntegration)),
+      childStudios: [],
+    });
+    await expect(service.setNetworkFavorite('studio-1', true)).rejects.toThrow(BadRequestException);
+    expect(studioNetworkFavorite.createMany).not.toHaveBeenCalled();
   });
 
   it('rejects studio details fetch when id is empty', async () => {

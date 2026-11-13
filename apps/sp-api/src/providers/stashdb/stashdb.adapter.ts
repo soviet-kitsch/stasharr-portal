@@ -1,4 +1,4 @@
-import { resolveStudioSelection } from '../studio-selection';
+import { resolveStudioSelection, studioNetworkValue } from '../studio-selection';
 import {
   BadGatewayException,
   Injectable,
@@ -36,6 +36,7 @@ export interface StashdbAdapterSceneFeedConfig extends StashdbAdapterTrendingCon
   sort: StashdbSceneFeedSort;
   direction?: StashdbSortDirection;
   favorites?: StashdbSceneFeedFavorites;
+  favoriteNetworkIds?: string[];
   tagFilter?: StashdbSceneTagFilter;
   studioIds?: string[];
   performerIds?: string[];
@@ -1376,12 +1377,42 @@ export class StashdbAdapter {
     );
   }
 
+  private async getFavoriteStudioIds(
+    config: StashdbAdapterBaseConfig,
+  ): Promise<string[]> {
+    const query = `
+      query FavoriteStudioIds($page: Int!, $perPage: Int!) {
+        queryStudios(input: { page: $page, per_page: $perPage, sort: NAME, direction: ASC, is_favorite: true }) {
+          count
+          studios { id }
+        }
+      }
+    `;
+    const ids = new Set<string>();
+    const perPage = 50;
+    for (let page = 1; ; page += 1) {
+      const { data } = await this.executeQuery(config, query, { page, perPage });
+      const result = data?.queryStudios;
+      if (typeof result?.count !== 'number' || !Array.isArray(result.studios)) {
+        throw new BadGatewayException('Favorite studios could not be loaded.');
+      }
+      for (const studio of result.studios) {
+        if (typeof studio.id === 'string' && studio.id.trim()) {
+          ids.add(studio.id.trim());
+        }
+      }
+      if (!result.studios.length || page * perPage >= result.count) {
+        return [...ids];
+      }
+    }
+  }
+
   private async getSceneFeed(
     config: StashdbAdapterSceneFeedConfig | StashdbAdapterTrendingConfig,
     sort: StashdbSceneFeedSort,
     direction: StashdbSortDirection = 'DESC',
   ): Promise<StashdbTrendingScenesResult> {
-    const favorites =
+    let favorites =
       'favorites' in config && config.favorites ? config.favorites : null;
     const tagFilter =
       'tagFilter' in config &&
@@ -1389,10 +1420,23 @@ export class StashdbAdapter {
       config.tagFilter.tagIds.length > 0
         ? config.tagFilter
         : null;
-    const studioIds = await this.resolveStudioIds(
-      'studioIds' in config ? (config.studioIds ?? []) : [],
-      config,
-    );
+    const studioSelection = 'studioIds' in config ? (config.studioIds ?? []) : [];
+    const favoriteNetworks =
+      'favoriteNetworkIds' in config ? config.favoriteNetworkIds : undefined;
+    let studioIds = await this.resolveStudioIds(studioSelection, config);
+    if (favorites === 'STUDIO' && favoriteNetworks?.length) {
+      // Query the combined studio scope once to preserve provider sorting and pagination.
+      const [directFavorites, networkStudios] = await Promise.all([
+        this.getFavoriteStudioIds(config),
+        this.resolveStudioIds(favoriteNetworks.map(studioNetworkValue), config),
+      ]);
+      const favoriteStudios = new Set([...directFavorites, ...networkStudios]);
+      studioIds = studioIds.length
+        ? studioIds.filter((id) => favoriteStudios.has(id))
+        : [...favoriteStudios];
+      if (!studioIds.length) return { total: 0, scenes: [] };
+      favorites = null;
+    }
     const performerIds =
       'performerIds' in config
         ? [

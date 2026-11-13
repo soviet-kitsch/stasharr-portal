@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { StashdbSortDirection } from '../providers/stashdb/stashdb.adapter';
 import { StashdbAdapter } from '../providers/stashdb/stashdb.adapter';
@@ -16,6 +17,7 @@ export class StudiosService {
   constructor(
     private readonly catalogProviderService: CatalogProviderService,
     private readonly stashdbAdapter: StashdbAdapter,
+    private readonly prisma: PrismaService,
   ) {}
 
   async getStudiosFeed(
@@ -60,16 +62,18 @@ export class StudiosService {
   }
 
   async getStudioById(studioId: string): Promise<StudioDetailsDto> {
-    const normalizedStudioId = studioId.trim();
-    if (!normalizedStudioId) {
-      throw new BadRequestException('Studio id is required.');
-    }
+    const normalizedStudioId = this.normalizeStudioId(studioId);
 
-    const config = await this.getActiveCatalogConfig();
-    const studio = await this.stashdbAdapter.getStudioById(
-      normalizedStudioId,
-      config,
-    );
+    const { providerKey, baseUrl, apiKey } =
+      await this.catalogProviderService.getConfiguredCatalogProvider();
+    const [studio, networkFavorite] = await Promise.all([
+      this.stashdbAdapter.getStudioById(normalizedStudioId, { baseUrl, apiKey }),
+      this.prisma.studioNetworkFavorite.findUnique({
+        where: {
+          provider_studioId: { provider: providerKey, studioId: normalizedStudioId },
+        },
+      }),
+    ]);
 
     return {
       id: studio.id,
@@ -77,6 +81,7 @@ export class StudiosService {
       aliases: studio.aliases,
       deleted: studio.deleted,
       isFavorite: studio.isFavorite,
+      isNetworkFavorite: networkFavorite !== null,
       createdAt: studio.createdAt,
       updatedAt: studio.updatedAt,
       imageUrl: studio.imageUrl,
@@ -85,6 +90,44 @@ export class StudiosService {
       parentStudio: studio.parentStudio,
       childStudios: studio.childStudios,
     };
+  }
+
+  async setNetworkFavorite(
+    studioId: string,
+    favorite: boolean,
+  ): Promise<{ favorited: boolean }> {
+    const normalizedStudioId = this.normalizeStudioId(studioId);
+    const { providerKey, baseUrl, apiKey } =
+      await this.catalogProviderService.getConfiguredCatalogProvider();
+    const key = { provider: providerKey, studioId: normalizedStudioId };
+
+    if (favorite) {
+      const studio = await this.stashdbAdapter.getStudioById(normalizedStudioId, {
+        baseUrl,
+        apiKey,
+      });
+      if (studio.deleted || !studio.childStudios.some((child) => !child.deleted)) {
+        throw new BadRequestException(
+          'Only a studio with child studios can be favorited as a network.',
+        );
+      }
+      await this.prisma.studioNetworkFavorite.createMany({
+        data: [key],
+        skipDuplicates: true,
+      });
+    } else {
+      await this.prisma.studioNetworkFavorite.deleteMany({ where: key });
+    }
+
+    return { favorited: favorite };
+  }
+
+  private normalizeStudioId(studioId: string): string {
+    const normalized = studioId.trim();
+    if (!normalized) {
+      throw new BadRequestException('Studio id is required.');
+    }
+    return normalized;
   }
 
   private async getActiveCatalogConfig(): Promise<{

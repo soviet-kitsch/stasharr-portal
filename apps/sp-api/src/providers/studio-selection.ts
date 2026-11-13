@@ -3,6 +3,10 @@ import { BadGatewayException, BadRequestException } from '@nestjs/common';
 const NETWORK_PREFIX = 'network:';
 const LOOKUP_BATCH_SIZE = 20;
 
+export function studioNetworkValue(studioId: string): string {
+  return NETWORK_PREFIX + studioId;
+}
+
 export function hasStudioNetworks(values: string[]): boolean {
   return values.some((value) => value.startsWith(NETWORK_PREFIX));
 }

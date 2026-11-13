@@ -67,21 +67,54 @@
         <div class="hero-info">
           <div class="title-row">
             <h1>{{ studio.name }}</h1>
-            <button
-              type="button"
-              class="favorite-indicator"
-              [class.active]="studio.isFavorite"
-              [disabled]="!canToggleFavoriteStudio(studio)"
-              [attr.aria-busy]="favoritingStudio()"
-              [attr.aria-label]="studioFavoriteLabel(studio)"
-              [title]="studioFavoriteLabel(studio)"
-              (click)="toggleFavoriteStudio(studio)"
-            >
-              <i
-                [class]="studio.isFavorite ? 'pi pi-star-fill' : 'pi pi-star'"
-                aria-hidden="true"
-              ></i>
-            </button>
+            @if (hasStudioFavoriteMenu(studio)) {
+              <button
+                type="button"
+                class="favorite-indicator favorite-menu-trigger"
+                [class.active]="studio.isFavorite || studio.isNetworkFavorite"
+                [disabled]="!canToggleFavoriteStudio(studio)"
+                [attr.aria-busy]="favoritingStudio()"
+                [attr.aria-label]="studioFavoriteMenuLabel(studio)"
+                [attr.aria-expanded]="studioFavoriteMenuOpen()"
+                aria-haspopup="menu"
+                [title]="studioFavoriteMenuLabel(studio)"
+                (click)="favoriteMenu.toggle($event)"
+              >
+                @if (!studio.isNetworkFavorite || studio.isFavorite) {
+                  <i [class]="studio.isFavorite ? 'pi pi-star-fill' : 'pi pi-star'" aria-hidden="true"></i>
+                }
+                @if (studio.isNetworkFavorite) {
+                  <i class="pi pi-sitemap" aria-hidden="true"></i>
+                }
+                <i class="pi pi-angle-down favorite-menu-chevron" aria-hidden="true"></i>
+              </button>
+              <p-menu
+                #favoriteMenu
+                ariaLabel="Studio favorites"
+                [model]="studioFavoriteOptions()"
+                [popup]="true"
+                appendTo="body"
+                (onShow)="studioFavoriteMenuOpen.set(true)"
+                (onHide)="studioFavoriteMenuOpen.set(false)"
+              />
+            } @else {
+              <button
+                type="button"
+                class="favorite-indicator"
+                [class.active]="studio.isFavorite"
+                [disabled]="!canToggleFavoriteStudio(studio)"
+                [attr.aria-busy]="favoritingStudio()"
+                [attr.aria-label]="studioFavoriteLabel(studio)"
+                [attr.aria-pressed]="studio.isFavorite"
+                [title]="studioFavoriteLabel(studio)"
+                (click)="toggleFavoriteStudio(studio)"
+              >
+                <i
+                  [class]="studio.isFavorite ? 'pi pi-star-fill' : 'pi pi-star'"
+                  aria-hidden="true"
+                ></i>
+              </button>
+            }
           </div>
 
           @if (studio.aliases.length > 0) {

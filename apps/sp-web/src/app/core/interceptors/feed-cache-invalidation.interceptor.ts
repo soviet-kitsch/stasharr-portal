@@ -13,6 +13,7 @@ export const feedCacheInvalidationInterceptor: HttpInterceptorFn = (request, nex
     !path.endsWith('/preview') &&
     (/^\/api\/requests(?:\/|$)/.test(path) ||
       /^\/api\/(?:scenes|performers|studios)\/.*\/favorite$/.test(path) ||
+      /^\/api\/studios\/[^/]+\/network-favorite$/.test(path) ||
       /^\/api\/integrations(?:\/|$)/.test(path) ||
       path === '/api/indexing/sync');
   return changesFeed

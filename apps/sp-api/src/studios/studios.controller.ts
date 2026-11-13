@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
+import { ToggleFavoriteDto } from '../scenes/dto/toggle-favorite.dto';
 import { StudioDetailsDto } from './dto/studio-details.dto';
 import { StudioFeedResponseDto } from './dto/studio-feed-response.dto';
 import { StudiosQueryDto } from './dto/studios-query.dto';
@@ -25,5 +26,13 @@ export class StudiosController {
     @Param('studioId') studioId: string,
   ): Promise<StudioDetailsDto> {
     return this.studiosService.getStudioById(studioId);
+  }
+
+  @Put(':studioId/network-favorite')
+  setNetworkFavorite(
+    @Param('studioId') studioId: string,
+    @Body() body: ToggleFavoriteDto,
+  ): Promise<{ favorited: boolean }> {
+    return this.studiosService.setNetworkFavorite(studioId, body.favorite);
   }
 }

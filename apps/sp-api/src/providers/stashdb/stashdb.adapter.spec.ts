@@ -1625,6 +1625,60 @@ describe('StashdbAdapter', () => {
     expect(result.scenes[0]?.id).toBe('grandchild-scene');
   });
 
+  it('queries the union of network and individual favorites before sorting and paging scenes', async () => {
+    fetchMock.mockImplementation(async (_url: string, request: RequestInit) => {
+      const { query, variables } = JSON.parse(String(request.body));
+      if (query.includes('FavoriteStudioIds')) {
+        expect(query).toContain('is_favorite: true');
+        return Response.json({
+          data: {
+            queryStudios: {
+              count: 51,
+              studios: variables.page === 1
+                ? [{ id: 'child' }, { id: 'direct' }]
+                : [{ id: 'second-page' }],
+            },
+          },
+        });
+      }
+      if (query.includes('StudioNetworkChildren')) {
+        const children: Record<string, string[]> = {
+          parent: ['child'], child: ['grandchild'], grandchild: [],
+        };
+        return Response.json({
+          data: Object.fromEntries(Object.entries(variables).map(([alias, id]) => [
+            alias, { child_studios: children[String(id)].map((child) => ({ id: child })) },
+          ])),
+        });
+      }
+      expect(query).toContain('sort: DATE, direction: DESC');
+      expect(query).not.toContain('favorites: STUDIO');
+      expect(variables).toMatchObject({ page: 2, perPage: 20, tagIds: ['tag-1'] });
+      expect(new Set(variables.studioIds)).toEqual(
+        new Set(['parent', 'child', 'grandchild', 'direct', 'second-page']),
+      );
+      expect(variables.studioIds).toHaveLength(5);
+      return Response.json({
+        data: { queryScenes: { count: 21, scenes: [{ id: 'grandchild-scene' }] } },
+      });
+    });
+
+    const config = {
+      baseUrl: 'http://catalog/graphql',
+      page: 2,
+      perPage: 20,
+      sort: 'DATE' as const,
+      favorites: 'STUDIO' as const,
+      favoriteNetworkIds: ['parent'],
+      tagFilter: { tagIds: ['tag-1'], mode: 'OR' as const },
+    };
+    await expect(adapter.getScenesBySort(config)).resolves.toMatchObject({ total: 21 });
+    await expect(adapter.getScenesBySort({ ...config, studioIds: ['unrelated'] })).resolves.toEqual({
+      total: 0,
+      scenes: [],
+    });
+  });
+
   it('combines scoped performer suggestions across the parent and child studios without duplicate people', async () => {
     fetchMock
       .mockResolvedValueOnce(

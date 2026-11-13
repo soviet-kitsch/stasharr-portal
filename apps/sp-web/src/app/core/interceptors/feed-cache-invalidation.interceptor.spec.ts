@@ -48,6 +48,14 @@ describe('feed cache invalidation', () => {
       .flush({}, { status: 502, statusText: 'Bad Gateway' });
     expect(cache.get('/acquisition')).toBeNull();
   });
+  it('invalidates saved feeds after a network favorite changes', () => {
+    const url = '/api/studios/studio/network-favorite';
+    http.put(url, { favorite: true }).subscribe();
+    const request = transport.expectOne(url);
+    expect(request.request.method).toBe('PUT');
+    request.flush({ favorited: true });
+    expect(cache.get('/acquisition')).toBeNull();
+  });
   it('keeps normal read and health polling observations', () => {
     http.get('/api/scenes').subscribe();
     transport.expectOne('/api/scenes').flush({});

@@ -10,6 +10,7 @@ import {
   OnDestroy,
   OnInit,
   ViewChild,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -28,6 +29,8 @@ import {
   switchMap,
 } from 'rxjs';
 import { ButtonDirective } from 'primeng/button';
+import { MenuItem } from 'primeng/api';
+import { Menu } from 'primeng/menu';
 import { Message } from 'primeng/message';
 import { MultiSelect } from 'primeng/multiselect';
 import { ProgressSpinner } from 'primeng/progressspinner';
@@ -70,6 +73,7 @@ interface MultiSelectOption {
     Select,
     MultiSelect,
     ButtonDirective,
+    Menu,
     SceneCardComponent,
     PerformerPickerComponent,
     SceneRequestModalComponent,
@@ -158,6 +162,24 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
   protected readonly studioError = signal<string | null>(null);
   protected readonly activeImageIndex = signal(0);
   protected readonly favoritingStudio = signal(false);
+  protected readonly studioFavoriteMenuOpen = signal(false);
+  protected readonly studioFavoriteOptions = computed<MenuItem[]>(() => {
+    const studio = this.studio();
+    if (!studio) return [];
+
+    return [
+      {
+        label: studio.isFavorite ? 'Unfavorite this studio' : 'Favorite this studio',
+        icon: studio.isFavorite ? 'pi pi-star-fill' : 'pi pi-star',
+        command: () => this.toggleFavoriteStudio(studio),
+      },
+      {
+        label: studio.isNetworkFavorite ? 'Unfavorite whole network' : 'Favorite whole network',
+        icon: 'pi pi-sitemap',
+        command: () => this.toggleFavoriteStudio(studio, true),
+      },
+    ];
+  });
 
   protected readonly sceneSort = signal<SceneFeedSort>(StudioPageComponent.DEFAULT_SCENE_SORT);
   protected readonly sceneSortDirection = signal<SortDirection>(
@@ -355,15 +377,18 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
     return studio.id.length > 0 && !this.favoritingStudio();
   }
 
-  protected toggleFavoriteStudio(studio: StudioDetails): void {
-    if (this.favoritingStudio()) {
+  protected toggleFavoriteStudio(studio: StudioDetails, network = false): void {
+    if (!this.canToggleFavoriteStudio(studio)) {
       return;
     }
 
-    const nextFavorite = !studio.isFavorite;
+    const nextFavorite = network ? !studio.isNetworkFavorite : !studio.isFavorite;
+    const label = network ? 'Studio network' : 'Studio';
     this.favoritingStudio.set(true);
-    this.discoverService
-      .favoriteStudio(studio.id, nextFavorite)
+    const update = network
+      ? this.discoverService.setStudioNetworkFavorite(studio.id, nextFavorite)
+      : this.discoverService.favoriteStudio(studio.id, nextFavorite);
+    update
       .pipe(
         finalize(() => {
           this.favoritingStudio.set(false);
@@ -372,19 +397,21 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
       .subscribe({
         next: (result) => {
           this.studio.update((current) =>
-            current ? { ...current, isFavorite: nextFavorite } : current,
+            current?.id === studio.id
+              ? { ...current, [network ? 'isNetworkFavorite' : 'isFavorite']: result.favorited }
+              : current,
           );
 
-          if (nextFavorite && result.alreadyFavorited) {
+          if (nextFavorite && 'alreadyFavorited' in result && result.alreadyFavorited) {
             this.notifications.info('Studio already favorited');
             return;
           }
 
-          this.notifications.success(nextFavorite ? 'Studio favorited' : 'Studio unfavorited');
+          this.notifications.success(nextFavorite ? `${label} favorited` : `${label} unfavorited`);
         },
         error: () => {
           this.notifications.error(
-            nextFavorite ? 'Failed to favorite studio' : 'Failed to unfavorite studio',
+            `Failed to ${nextFavorite ? 'favorite' : 'unfavorite'} ${label.toLowerCase()}`,
           );
         },
       });
@@ -392,6 +419,18 @@ export class StudioPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   protected studioFavoriteLabel(studio: StudioDetails): string {
     return studio.isFavorite ? 'Unfavorite studio' : 'Favorite studio';
+  }
+
+  protected hasStudioFavoriteMenu(studio: StudioDetails): boolean {
+    return studio.isNetworkFavorite ||
+      (!studio.deleted && studio.childStudios.some((child) => !child.deleted));
+  }
+
+  protected studioFavoriteMenuLabel(studio: StudioDetails): string {
+    if (studio.isNetworkFavorite && studio.isFavorite) return 'Favorites: studio and network';
+    if (studio.isNetworkFavorite) return 'Favorites: whole network';
+    if (studio.isFavorite) return 'Favorites: this studio';
+    return 'Favorite studio or network';
   }
 
   protected onSceneSortChanged(nextValue: string): void {

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { IntegrationStatus, IntegrationType } from '@prisma/client';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { integrationBrowserBaseUrl } from '../integrations/browser-url.util';
+import { PrismaService } from '../prisma/prisma.service';
 import { CatalogProviderService } from '../providers/catalog/catalog-provider.service';
 import { type CatalogProviderKey } from '../providers/catalog/catalog-provider.util';
 import { StashAdapter } from '../providers/stash/stash.adapter';
@@ -39,6 +40,7 @@ export class ScenesService {
     private readonly sceneStatusService: SceneStatusService,
     private readonly stashAdapter: StashAdapter,
     private readonly whisparrAdapter: WhisparrAdapter,
+    private readonly prisma: PrismaService,
   ) {}
 
   async getScenesFeed(
@@ -57,6 +59,13 @@ export class ScenesService {
       await this.catalogProviderService.getConfiguredCatalogProvider();
     const normalizedTagIds = this.normalizeTagIds(tagIds);
     const normalizedStudioIds = this.normalizeStudioIds(studioIds);
+    const networkFavorites =
+      favorites === 'STUDIO'
+        ? await this.prisma.studioNetworkFavorite.findMany({
+            where: { provider: catalogProvider.providerKey },
+            select: { studioId: true },
+          })
+        : [];
     const scenes = await this.stashdbAdapter.getScenesBySort({
       baseUrl: catalogProvider.baseUrl,
       apiKey: catalogProvider.apiKey,
@@ -65,6 +74,9 @@ export class ScenesService {
       sort,
       direction,
       favorites,
+      ...(networkFavorites.length
+        ? { favoriteNetworkIds: networkFavorites.map(({ studioId }) => studioId) }
+        : {}),
       studioIds: normalizedStudioIds,
       ...(performerIds.length
         ? { performerIds: this.normalizeTagIds(performerIds), performerMode }
