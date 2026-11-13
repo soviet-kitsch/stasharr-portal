@@ -6,6 +6,7 @@ import { Client } from "pg";
 
 const UPGRADE = "20261027170000_integration_browser_defaults";
 const DIAGNOSTICS_UPGRADE = "20261029090000_request_diagnostics";
+const NETWORK_FAVORITES_UPGRADE = "20261113100000_studio_network_favorites";
 const NEW_FIELDS = [
   "browserUrl",
   "defaultRootFolderPath",
@@ -67,7 +68,7 @@ try {
   );
   assert.equal(
     migrations.at(-1),
-    DIAGNOSTICS_UPGRADE,
+    NETWORK_FAVORITES_UPGRADE,
     "Review this proof before adding a later migration",
   );
   for (const migration of migrations.filter(
@@ -241,10 +242,40 @@ try {
     1,
   );
   assert.deepEqual(await capture(), beforeDiagnostics);
+  stage = "applying studio network favorites without changing existing records";
+  const diagnosticsBeforeNetworkFavorites = (
+    await database.query('SELECT * FROM "RequestDiagnosticObservation"')
+  ).rows;
+  await database.query(
+    await readFile(
+      path.join(migrationRoot, NETWORK_FAVORITES_UPGRADE, "migration.sql"),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(await capture(), beforeDiagnostics);
+  assert.deepEqual(
+    (await database.query('SELECT * FROM "RequestDiagnosticObservation"')).rows,
+    diagnosticsBeforeNetworkFavorites,
+  );
+  const networkFavorites = () =>
+    database.query('SELECT provider, "studioId" FROM "StudioNetworkFavorite" ORDER BY provider');
+  assert.equal((await networkFavorites()).rowCount, 0);
+  await database.query(`INSERT INTO "StudioNetworkFavorite" (provider, "studioId")
+    VALUES ('STASHDB', 'ci-network'), ('FANSDB', 'ci-network')`);
+  const duplicateFavorite = await database.query(`INSERT INTO "StudioNetworkFavorite" (provider, "studioId")
+    VALUES ('STASHDB', 'ci-network') ON CONFLICT DO NOTHING`);
+  assert.equal(duplicateFavorite.rowCount, 0);
+  await database.query(`DELETE FROM "StudioNetworkFavorite"
+    WHERE provider='STASHDB' AND "studioId"='ci-network'`);
+  assert.deepEqual((await networkFavorites()).rows, [
+    { provider: "FANSDB", studioId: "ci-network" },
+  ]);
   const evidence = {
     sourceCommit: process.env.GITHUB_SHA ?? "local-isolated-check",
     migration: UPGRADE,
     diagnosticsMigration: DIAGNOSTICS_UPGRADE,
+    networkFavoritesMigration: NETWORK_FAVORITES_UPGRADE,
+    networkFavoritesProviderIsolationPassed: true,
     diagnosticsRecordsPreserved: true,
     diagnosticConcurrencyAndUncertaintyGuardsPassed: true,
     baselineMigrations: migrations.filter((migration) => migration < UPGRADE)
